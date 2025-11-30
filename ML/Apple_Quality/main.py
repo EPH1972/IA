@@ -1,29 +1,71 @@
 import numpy as np
-from matplotlib import pyplot as plt
-
-from sklearn import tree
-import sklearn.datasets as datasets
+import seaborn as sns
+import pandas as pd
+import matplotlib.pyplot as plt
+from sklearn.feature_selection import SelectKBest, f_classif
 from sklearn.model_selection import train_test_split
-from sklearn.feature_selection import SelectKBest
-from sklearn.tree import DecisionTreeClassifier
 
-numpy_numbers = np.genfromtxt('apple_quality.csv', skip_header=1, skip_footer=1, delimiter=',')
-numpy_strings = np.genfromtxt('apple_quality.csv', skip_header=1, skip_footer=1, delimiter=',', dtype=str)
+class KNN:
+    def __init__(self, k=3):
+        self.k = k
+        self.X_train = None
+        self.y_train = None
 
-X = np.delete(numpy_numbers, -1, axis=1)
-y = np.delete(numpy_strings, np.s_[:-1], axis=1)
+    def fit(self, X, y):
+        self.X_train = X
+        self.y_train = y
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=0)
+    def _euclidean_distance(self, a, b):
+        return np.sqrt(np.sum((a - b)**2))
 
-print(X_train,y_train)
+    def predict_one(self, x):
+        distances = np.array([self._euclidean_distance(x, x_train) for x_train in self.X_train])
+        k_idx = distances.argsort()[:self.k]
+        k_labels = self.y_train[k_idx]
+        values, counts = np.unique(k_labels, return_counts=True)
+        return values[counts.argmax()]
 
-'''apple_quality = data
-X = apple_quality.data
-y = apple_quality.target
-X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=0)
+    def predict(self, X):
+        return np.array([self.predict_one(x) for x in X])
 
-clf = DecisionTreeClassifier(max_leaf_nodes=3, random_state=0)
-clf.fit(X_train, y_train)
+    def accuracy(self, y_true, y_pred):
+        return np.mean(y_true == y_pred) * 100
 
-tree.plot_tree(clf, proportion=True)
-plt.show()'''
+
+def main():
+
+    file_path = "apple_quality.csv"
+    
+    dataset = pd.read_csv(file_path)
+
+    X = dataset.iloc[:, :-1].values
+    y = dataset.iloc[:, -1].values
+
+    selector = SelectKBest(score_func=f_classif, k=5)
+    X_new = selector.fit_transform(X, y)
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X_new, y, test_size=0.2, random_state=42
+    )
+
+    model = KNN(k=5)
+    model.fit(X_train, y_train)
+
+    y_pred = model.predict(X_test)
+
+    acc = model.accuracy(y_test, y_pred)
+    print(f"Accuracy del modelo KNN: {acc:.2f}%")
+
+    plt.figure(figsize=(10,6))
+    sns.heatmap(np.corrcoef(X.T), cmap="viridis")
+    plt.title("Matriz de Correlación")
+    plt.show()
+
+    plt.figure(figsize=(6,4))
+    sns.countplot(x=y)
+    plt.title("Distribución de clases")
+    plt.show()
+
+
+if __name__ == "__main__":
+    main()
