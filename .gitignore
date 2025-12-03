@@ -1,1 +1,5 @@
 *.ipynb
+*.csv
+*.idx3-ubyte
+*.idx3-ubyte
+*-env
