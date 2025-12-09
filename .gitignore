@@ -3,3 +3,4 @@
 *.idx3-ubyte
 *.idx3-ubyte
 ./*-env/ignore
+.jpg
