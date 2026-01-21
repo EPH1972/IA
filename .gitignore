@@ -1,6 +1,25 @@
-*.ipynb
+# Virtual Environments
+venv/
+.venv/
+env/
+*_env/
+*-env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Data and Models
 *.csv
 *.idx3-ubyte
-*.idx3-ubyte
-*-env/
-.jpg
+*.idx1-ubyte
+*.pth
+*.pt
+*.wav
+*.mp3
+*.jpg
+*.jpeg
+*.png
+
+# OS
+.DS_Store
