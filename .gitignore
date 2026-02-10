@@ -17,6 +17,7 @@ __pycache__/
 *.pt
 *.wav
 *.mp3
+*.mp4
 *.jpg
 *.jpeg
 *.png
