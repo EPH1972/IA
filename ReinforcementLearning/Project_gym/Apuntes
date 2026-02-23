@@ -1,0 +1,9 @@
+Enviroment:
+- It will has an entry data in JSON  format that cames from diferent places (have to get examples from Gimlet, Bonasera end Hubspot input data)
+- The ouput or estimated output is determinated in a instructions file of how this JSON has to be before it creates the lead or deal in Zoho CRM.
+- In between the previus indications it needs a middle dasition tree to minimize the risk and make the RL model know how to act when the input arrive and how has to be the output at the end of the process.
+
+
+
+
+Cuál es la entrada de datos
