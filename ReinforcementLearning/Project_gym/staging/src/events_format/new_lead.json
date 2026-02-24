@@ -1,0 +1,15 @@
+{
+  "process": ["normal", "test"],
+  "eventData": {
+    "eventType": "new_lead",
+    "Lead": {
+      "Deal_Name": "string",
+      "Email": "string",
+      "Phone": "string"
+    },
+    "Call": {
+      "Language": "string",
+      "Best_Call_Time": "string"
+    }
+  }
+}

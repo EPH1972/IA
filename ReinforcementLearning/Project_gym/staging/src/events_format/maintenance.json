@@ -1,0 +1,25 @@
+{
+  "process": ["normal", "test"],
+  "eventData": {
+    "eventType": "maintenance",
+    "Lead": {
+      "Deal_Name": "string",
+      "Email": "string",
+      "Phone": "string"
+    },
+    "Call": {
+      "Language": "string",
+      "Availability": "string"
+    },
+    "Ticket": {
+      "IBAN": "string",
+      "issue_type": "string",
+      "priority": "string",
+      "description": "string"
+    },
+    "Battery": {
+      "status": "string",
+      "replacement_needed": "boolean"
+    }
+  }
+}

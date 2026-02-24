@@ -22,44 +22,13 @@ class CRMValidator:
         self.email_regex = r"(^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$)"
         self.phone_regex = r"^\+\d{1,3}-\d{3}-\d{3}-\d{4}$" # E.g., +1-555-010-9999
         
-        # Event-type-specific required fields with data types
-        self.required_fields = {
-            "new_lead": {
-                "First_Name": "string",
-                "Last_Name": "string",
-                "Email": "string",
-                "Phone": "string"
-            },
-            "offer": {
-                "First_Name": "string",
-                "Last_Name": "string",
-                "Email": "string",
-                "Phone": "string",
-                "Offer_Amount": "string",
-                "Expected_Revenue": "string"
-            },
-            "contract": {
-                "First_Name": "string",
-                "Last_Name": "string",
-                "Email": "string",
-                "Phone": "string",
-                "Contract_Terms": "string",
-                "Contract_Value": "string"
-            },
-            "maintenance": {
-                "First_Name": "string",
-                "Last_Name": "string",
-                "Ticket_ID": "string",
-                "Issue_Type": "string",
-                "Priority": "string"
-            }
-        }
-        
-        # Fallback to basic leads
-        self.base_required = {"First_Name": "string", "Last_Name": "string", "Email": "string", "Phone": "string"}
+        # Schema definitions are now handled dynamically or will be replaced.
+        # Clearing old hardcoded requirements to avoid conflicts with new JSON structure.
+        self.required_fields = {} 
+        self.base_required = {}
         
         # Simple in-memory database simulation for de-duplication
-        self.mock_database = set() 
+        self.mock_database = set()  
 
     def validate_email(self, email: str) -> bool:
         if not email: return False

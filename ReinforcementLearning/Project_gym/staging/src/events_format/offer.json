@@ -1,0 +1,33 @@
+{
+  "process": ["normal", "test"],
+  "eventData": {
+    "eventType": "offer",
+    "Lead": {
+      "Deal_Name": "string",
+      "Email": "string",
+      "Phone": "string"
+    },
+    "Call": {
+      "Language": "string",
+      "Best_Call_Time": "string"
+    },
+    "Deal": {
+      "Deal_Name": "string",
+      "Email": "string",
+      "Phone": "string"
+    },
+    "Offer": {
+      "price": "number",
+      "extra_costs": "number"
+    },
+    "Contact": {
+      "IBAN": "string"
+    },
+    "Battery": {
+      "price": "number"
+    },
+    "Charger": {
+      "price": "number"
+    }
+  }
+}
