@@ -3,31 +3,31 @@
   "eventData": {
     "eventType": "offer",
     "Lead": {
-      "Deal_Name": "string",
-      "Email": "string",
-      "Phone": "string"
+      "Deal_Name": { "type": "string", "alias": "lead_name" },
+      "Email": { "type": "string", "alias": "lead_email" },
+      "Phone": { "type": "string", "alias": "lead_phone" }
     },
     "Call": {
-      "Language": "string",
-      "Best_Call_Time": "string"
+      "Language": { "type": "string", "alias": "preferred_language" },
+      "Best_Call_Time": { "type": "string", "alias": "call_schedule" }
     },
     "Deal": {
-      "Deal_Name": "string",
-      "Email": "string",
-      "Phone": "string"
+      "Deal_Name": { "type": "string", "alias": "deal_name" },
+      "Email": { "type": "string", "alias": "deal_email" },
+      "Phone": { "type": "string", "alias": "deal_phone" }
     },
     "Offer": {
-      "price": "number",
-      "extra_costs": "number"
+      "price": { "type": "number", "alias": "offer_price" },
+      "extra_costs": { "type": "number", "alias": "offer_extra_costs" }
     },
     "Contact": {
-      "IBAN": "string"
+      "IBAN": { "type": "string", "alias": "contact_iban" }
     },
     "Battery": {
-      "price": "number"
+      "price": { "type": "number", "alias": "battery_price" }
     },
     "Charger": {
-      "price": "number"
+      "price": { "type": "number", "alias": "charger_price" }
     }
   }
 }

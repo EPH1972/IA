@@ -3,23 +3,23 @@
   "eventData": {
     "eventType": "maintenance",
     "Lead": {
-      "Deal_Name": "string",
-      "Email": "string",
-      "Phone": "string"
+      "Deal_Name": { "type": "string", "alias": "lead_name" },
+      "Email": { "type": "string", "alias": "lead_email" },
+      "Phone": { "type": "string", "alias": "lead_phone" }
     },
     "Call": {
-      "Language": "string",
-      "Availability": "string"
+      "Language": { "type": "string", "alias": "preferred_language" },
+      "Availability": { "type": "string", "alias": "call_availability" }
     },
     "Ticket": {
-      "IBAN": "string",
-      "issue_type": "string",
-      "priority": "string",
-      "description": "string"
+      "IBAN": { "type": "string", "alias": "ticket_iban" },
+      "issue_type": { "type": "string", "alias": "issue_type" },
+      "priority": { "type": "string", "alias": "issue_priority" },
+      "description": { "type": "string", "alias": "issue_description" }
     },
     "Battery": {
-      "status": "string",
-      "replacement_needed": "boolean"
+      "status": { "type": "string", "alias": "battery_status" },
+      "replacement_needed": { "type": "boolean", "alias": "battery_replacement_needed" }
     }
   }
 }

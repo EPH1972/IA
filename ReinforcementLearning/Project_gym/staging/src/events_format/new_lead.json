@@ -3,13 +3,13 @@
   "eventData": {
     "eventType": "new_lead",
     "Lead": {
-      "Deal_Name": "string",
-      "Email": "string",
-      "Phone": "string"
+      "Deal_Name": { "type": "string", "alias": "lead_name" },
+      "Email": { "type": "string", "alias": "lead_email" },
+      "Phone": { "type": "string", "alias": "lead_phone" }
     },
     "Call": {
-      "Language": "string",
-      "Best_Call_Time": "string"
+      "Language": { "type": "string", "alias": "preferred_language" },
+      "Best_Call_Time": { "type": "string", "alias": "call_schedule" }
     }
   }
 }
