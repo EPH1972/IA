@@ -21,6 +21,7 @@ __pycache__/
 *.jpg
 *.jpeg
 *.png
+*.parquet
 
 # OS
 .DS_Store
