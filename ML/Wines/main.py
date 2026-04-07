@@ -10,6 +10,7 @@ from sklearn.feature_selection import SelectKBest, f_classif
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import ConfusionMatrixDisplay
+from sklearn.preprocessing import StandardScaler
 
 # ---------------------------------------------------------------------------
 # Load dataset
@@ -25,10 +26,6 @@ wine_df['target'] = y
 print(f"Samples: {X.shape[0]}  |  Features: {X.shape[1]}")
 print(f"Classes: {wines.target_names}")
 print(wine_df.head())
-
-# ---------------------------------------------------------------------------
-# Pairplot — 4 key features coloured by class
-# ---------------------------------------------------------------------------
 
 sns.pairplot(wine_df, hue='target',
              palette='viridis',
@@ -75,6 +72,7 @@ ConfusionMatrixDisplay.from_predictions(
     display_labels=wines.target_names, cmap='Greens')
 plt.title('Confusion Matrix - Random Forest')
 plt.show()
+
 importances = pd.Series(rf.feature_importances_, index=wines.feature_names).sort_values(ascending=True)
 plt.figure(figsize=(8, 6))
 importances.plot(kind='barh', color='steelblue')
@@ -83,10 +81,6 @@ plt.xlabel('Importance')
 plt.tight_layout()
 plt.show()
 
-# ---------------------------------------------------------------------------
-# SelectKBest — reduce to 6 features
-# ---------------------------------------------------------------------------
-
 N_BEST = 6
 feature_selector = SelectKBest(score_func=f_classif, k=N_BEST)
 X_new = feature_selector.fit_transform(X, y)
@@ -94,7 +88,6 @@ X_new = feature_selector.fit_transform(X, y)
 selected_feature_names = np.array(wines.feature_names)[feature_selector.get_support()]
 print(f"\nSelectKBest top-{N_BEST} features: {selected_feature_names.tolist()}")
 
-# Visualise F-scores for all features
 scores = pd.Series(feature_selector.scores_, index=wines.feature_names).sort_values(ascending=True)
 plt.figure(figsize=(8, 6))
 scores.plot(kind='barh', color='coral')
@@ -105,10 +98,6 @@ for i, (name, score) in enumerate(scores.items()):
 plt.xlabel('F-score')
 plt.tight_layout()
 plt.show()
-
-# ---------------------------------------------------------------------------
-# Random Forest trained on selected features
-# ---------------------------------------------------------------------------
 
 X_train_sel, X_test_sel, y_train_sel, y_test_sel = train_test_split(
     X_new, y, test_size=0.3, random_state=0)
@@ -133,10 +122,6 @@ sns.pairplot(sel_df, hue='target', palette='viridis', diag_kind='kde', height=1.
 plt.suptitle(f'Pairplot — SelectKBest top {N_BEST} features', y=1.02)
 plt.tight_layout()
 plt.show()
-
-# ---------------------------------------------------------------------------
-# Summary
-# ---------------------------------------------------------------------------
 
 print("\n" + "="*45)
 print("MODEL COMPARISON")

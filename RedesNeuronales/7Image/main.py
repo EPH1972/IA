@@ -1,69 +1,105 @@
-import idx2numpy
-import numpy as np
-from classes import Densa
-from classes import ReLU
-from classes import model
+import torch
+from torch import nn
+from torch.utils.data import DataLoader
 from matplotlib import pyplot as plt
 
+from classes import MNISTDataset, MNISTModel
 
-''' def train_step(model, x,y,lr):
-    ypred = model.forward(x)
-    loss = (ypred - yreal)
-    model.basckward(loss)
-    model.update(lr)
-    acc = acc(ypred, yreal)
-    print(acc,loss)
+# ---------------------------------------------------------------------------
+# Globals
+# ---------------------------------------------------------------------------
 
-def train_loop(model,data,lr):
-    for i in range(epochs):
-        for x,y in data:
-            train_step(model,x,y,lr)'''
+batch_size    = 100
+learning_rate = 0.003
+epochs        = 10
+
+# ---------------------------------------------------------------------------
+# Dataset and DataLoader
+# ---------------------------------------------------------------------------
+
+train_dataset = MNISTDataset('train-images.idx3-ubyte', 'train-labels.idx1-ubyte')
+test_dataset  = MNISTDataset('t10k-images.idx3-ubyte',  't10k-labels.idx1-ubyte')
+
+train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+test_dataloader  = DataLoader(test_dataset,  batch_size=batch_size, shuffle=False)
+
+print(f"Train samples: {len(train_dataset)}  |  Test samples: {len(test_dataset)}")
+
+# ---------------------------------------------------------------------------
+# Model
+# ---------------------------------------------------------------------------
+
+model = MNISTModel()
+print(model)
+
+# ---------------------------------------------------------------------------
+# Optimizer and loss
+# ---------------------------------------------------------------------------
+
+loss_fn   = nn.CrossEntropyLoss()
+optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
+
+# ---------------------------------------------------------------------------
+# Train loop and test loop
+# ---------------------------------------------------------------------------
+
+def train_loop(dataloader, model, loss_fn, optimizer):
+    size = len(dataloader.dataset)
+    model.train()
+    for batch, (X, y) in enumerate(dataloader):
+        pred = model(X)
+        loss = loss_fn(pred, y)
+
+        loss.backward()
+        optimizer.step()
+        optimizer.zero_grad()
+
+        if batch % 100 == 0:
+            loss_val, current = loss.item(), batch * batch_size + len(X)
+            print(f"  loss: {loss_val:>7f}  [{current:>5d}/{size:>5d}]")
 
 
-# Reading
-y_test = idx2numpy.convert_from_file('t10k-labels.idx1-ubyte')
-X_test = idx2numpy.convert_from_file('t10k-images.idx3-ubyte')
-y_train = idx2numpy.convert_from_file('train-labels.idx1-ubyte')
-X_train = idx2numpy.convert_from_file('train-images.idx3-ubyte')
+def test_loop(dataloader, model, loss_fn):
+    model.eval()
+    size        = len(dataloader.dataset)
+    num_batches = len(dataloader)
+    test_loss, correct = 0, 0
 
+    with torch.no_grad():
+        for X, y in dataloader:
+            pred       = model(X)
+            test_loss += loss_fn(pred, y).item()
+            correct   += (pred.argmax(1) == y).type(torch.float).sum().item()
 
-images = X_train/256
+    test_loss /= num_batches
+    correct   /= size
+    print(f"  Accuracy: {(100 * correct):>0.1f}%  Avg loss: {test_loss:>8f}\n")
 
-X_train = np.reshape(X_train, (60, 1000, 784))
-y_train = np.reshape(y_train, )
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
 
-def train_step():
-    pass
+if __name__ == '__main__':
+    for t in range(epochs):
+        print(f"Epoch {t + 1}\n{'-' * 30}")
+        train_loop(train_dataloader, model, loss_fn, optimizer)
+        test_loop(test_dataloader,  model, loss_fn)
+    print("Done!")
 
-def init_params():
-    w1=np.random.rand(10,784)-0.5
-    b1=np.random.rand(10,1)-0.5
-    w2=np.random.rand(10,10)-0.5
-    b2=np.random.rand(10,1)-0.5
-    return w1, b1, w2, b2
+    # Visualize 10 sample predictions from the test set
+    model.eval()
+    images, labels = next(iter(test_dataloader))
+    with torch.no_grad():
+        preds = model(images).argmax(1)
 
-
-
-
-
-def main():
-    D1 =  Densa()
-    D1Act = ReLU()
-    D2 = Densa()
-    D2Act = ReLU()
-
-    Model = model(D1,D1Act,D2,D2Act)
-    for i in len(Model.epoch):
-        print("In")
-
-    '''plt.figure(figsize=(10, 5))
-    for i in range():
-        plt.subplot(1, 1000, i+1)
-        plt.imshow(images[i], cmap='gray')
-        plt.title(f"Label: {y_train[i]}")
+    plt.figure(figsize=(12, 4))
+    for i in range(10):
+        plt.subplot(2, 5, i + 1)
+        plt.imshow(images[i, 0].numpy(), cmap='gray')
+        color = 'green' if preds[i] == labels[i] else 'red'
+        plt.title(f"Pred: {preds[i].item()}\nTrue: {labels[i].item()}",
+                  color=color, fontsize=9)
         plt.axis('off')
+    plt.suptitle("Sample Test Predictions (green=correct, red=wrong)")
     plt.tight_layout()
-    plt.show()'''
-
-if __name__=='__main__':
-    main()
+    plt.show()

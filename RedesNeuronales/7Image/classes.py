@@ -1,59 +1,62 @@
-from abc import abstractmethod
-import numpy as np
-
-#Classes declaration 
-class layer():
-    
-    def __init__(self, X, W,B):
-        self.X = X
-        self.W = W
-        self.B = B
-        self.dW = 0
-        self.dB = 0
-
-    @abstractmethod
-    def forward(X):
-        pass
-
-    @abstractmethod
-    def backward(ypred, yreal):
-        pass
-
-    @abstractmethod
-    def update(W,B,dW,dB,alfa):
-        pass
+import idx2numpy
+import torch
+from torch import nn
+from torch.utils.data import Dataset
 
 
-class Densa(layer):
-    
-    def forward(X):
-        y = X @ super().W + super().B
-        return y
-    
-    def backward(ypred, yreal):
-        return super().backward(yreal)
-    
-    def update(W, B, dW, dB, alfa):
-        return super().update(B, dW, dB, alfa)
+class MNISTDataset(Dataset):
+    """
+    Custom Dataset that reads MNIST idx-ubyte files directly.
+    Returns (image_tensor, label) where image is float32 in [0,1],
+    shape (1, 28, 28) — channel-first, as expected by Conv2d.
+    """
 
-class ReLU(layer):
-    
-    def forward(X):
-        return np.maximum(X,0)
-    
-    def backward(ypred, yreal):
-        return super().backward(yreal)
-    
-    def update(W, B, dW, dB, alfa):
-        return super().update(B, dW, dB, alfa)
+    def __init__(self, images_path: str, labels_path: str):
+        images = idx2numpy.convert_from_file(images_path)  # (N, 28, 28)  uint8
+        labels = idx2numpy.convert_from_file(labels_path)  # (N,)         uint8
 
-class model():
-    def __init__(self, d1, dact, l1, lact):
-        self.epoch = [d1,dact,l1,lact]
+        # Normalise to [0, 1] and add channel dim -> (N, 1, 28, 28)
+        self.images = torch.tensor(images / 255.0, dtype=torch.float32).unsqueeze(1)
+        self.labels = torch.tensor(labels, dtype=torch.long)
+
+    def __len__(self) -> int:
+        return len(self.labels)
+
+    def __getitem__(self, idx):
+        return self.images[idx], self.labels[idx]
 
 
-    def loss():
-        pass
+class MNISTModel(nn.Module):
+    """
+    Small CNN for MNIST (1x28x28 -> 10 classes).
 
-    def acc():
-        pass 
+    Architecture (following the notebook's CNN pattern):
+        Conv2d(1,  32, 3)  -> (32, 26, 26)
+        ReLU
+        MaxPool2d(2)       -> (32, 13, 13)
+        Conv2d(32, 64, 3)  -> (64, 11, 11)
+        ReLU
+        MaxPool2d(2)       -> (64,  5,  5)
+        Flatten            -> 1600
+        Linear(1600, 128)
+        ReLU
+        Linear(128, 10)
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.seq = nn.Sequential(
+            nn.Conv2d(1, 32, kernel_size=3),    # (bs, 1, 28, 28) -> (bs, 32, 26, 26)
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2),                 # -> (bs, 32, 13, 13)
+            nn.Conv2d(32, 64, kernel_size=3),   # -> (bs, 64, 11, 11)
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2),                 # -> (bs, 64,  5,  5)
+            nn.Flatten(),                       # -> (bs, 1600)
+            nn.Linear(1600, 128),
+            nn.ReLU(),
+            nn.Linear(128, 10),
+        )
+
+    def forward(self, X: torch.Tensor) -> torch.Tensor:
+        return self.seq(X)
