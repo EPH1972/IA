@@ -6,7 +6,8 @@ import matplotlib.pyplot as plt
 def cutvowel(file_address, start, end):
     Fs, audio = sio.wavfile.read(file_address)
     audiocut = audio[int(float(start)*Fs):int(float(end)*Fs)]
-    audiocut = audiocut[:,0]
+    if audiocut.ndim > 1:
+        audiocut = audiocut[:,0]
     return Fs, audiocut
     
     

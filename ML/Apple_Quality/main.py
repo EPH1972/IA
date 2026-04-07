@@ -35,17 +35,33 @@ class KNN:
 def main():
 
     file_path = "apple_quality.csv"
-    
+
     dataset = pd.read_csv(file_path)
 
+    dataset = dataset.dropna(subset=["Quality"])
+    dataset = dataset.drop(columns=["A_id"])
+    dataset["Acidity"] = pd.to_numeric(dataset["Acidity"], errors="coerce")
+    dataset = dataset.dropna()
+
+    feature_names = dataset.columns[:-1].tolist()
     X = dataset.iloc[:, :-1].values
     y = dataset.iloc[:, -1].values
 
+    print(f"Dataset: {X.shape[0]} samples, {X.shape[1]} features")
+    print(f"Features: {feature_names}")
+    print(f"Classes: {np.unique(y)}")
+
     selector = SelectKBest(score_func=f_classif, k=5)
     X_new = selector.fit_transform(X, y)
+    selected = [feature_names[i] for i in selector.get_support(indices=True)]
+    print(f"Selected features: {selected}")
+
+    from sklearn.preprocessing import StandardScaler
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X_new)
 
     X_train, X_test, y_train, y_test = train_test_split(
-        X_new, y, test_size=0.2, random_state=42
+        X_scaled, y, test_size=0.2, random_state=42
     )
 
     model = KNN(k=5)
@@ -56,14 +72,16 @@ def main():
     acc = model.accuracy(y_test, y_pred)
     print(f"Accuracy del modelo KNN: {acc:.2f}%")
 
-    plt.figure(figsize=(10,6))
-    sns.heatmap(np.corrcoef(X.T), cmap="viridis")
-    plt.title("Matriz de Correlación")
+    plt.figure(figsize=(10, 6))
+    corr_df = pd.DataFrame(X, columns=feature_names)
+    sns.heatmap(corr_df.corr(), annot=True, fmt=".2f", cmap="viridis")
+    plt.title("Matriz de Correlacion")
+    plt.tight_layout()
     plt.show()
 
-    plt.figure(figsize=(6,4))
+    plt.figure(figsize=(6, 4))
     sns.countplot(x=y)
-    plt.title("Distribución de clases")
+    plt.title("Distribucion de clases")
     plt.show()
 
 
