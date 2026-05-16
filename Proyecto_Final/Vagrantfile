@@ -1,0 +1,146 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+#
+# Windows 7 VM para StarCraft: Brood War 1.16.1
+#
+# PASOS PREVIOS (solo la primera vez):
+#   1. Ejecuta el script para crear la caja local:
+#        powershell -ExecutionPolicy Bypass -File crear-caja.ps1
+#   2. Luego arranca la VM:
+#        vagrant up
+#   3. Instala Windows 7 desde la ventana de VirtualBox.
+#   4. Copia BW-1161.exe a la VM vía carpeta compartida e instálalo.
+#
+# COMANDOS HABITUALES:
+#   vagrant up       → encender / crear la VM
+#   vagrant halt     → apagar
+#   vagrant destroy  → eliminar la VM (el disco win7-install.vdi queda intacto)
+
+# ── Comunicador nulo (inline, sin plugins externos) ───────────────────────────
+# Necesario porque esta VM no tiene SO instalado inicialmente y no requiere
+# SSH ni WinRM. Registrado aquí para compatibilidad con cualquier versión de Vagrant.
+class VagrantNullCommunicator
+  def initialize(_machine); end
+  def self.match?(_machine); nil; end
+  def ready?;                true; end
+  def wait_for_ready(_dur);  true; end
+  def reset!;                     end
+  def execute(_cmd, _opts = {}, &_block); end
+  def sudo(_cmd,   _opts = {}, &_block); end
+  def test(_cmd,   _opts = {}); false; end
+  def upload(_from,   _to); end
+  def download(_from, _to); end
+end
+
+Vagrant.plugin("2") do |plugin|
+  plugin.name "null-communicator-inline"
+  plugin.communicator("none") { VagrantNullCommunicator }
+end
+# ─────────────────────────────────────────────────────────────────────────────
+
+ISO_PATH = File.expand_path("Windows 7 monilne lite.iso", __dir__).freeze
+VDI_PATH = File.expand_path("win7-install.vdi",           __dir__).freeze
+
+abort "ERROR: ISO no encontrada en #{ISO_PATH}" unless File.exist?(ISO_PATH)
+
+Vagrant.configure("2") do |config|
+
+  # ── Box ─────────────────────────────────────────────────────────────────────
+  config.vm.box          = "win7-lite"
+  config.vm.communicator = "none"
+  config.vm.synced_folder ".", "/vagrant", disabled: true
+
+  # ── VirtualBox ──────────────────────────────────────────────────────────────
+  config.vm.provider "virtualbox" do |vb|
+    vb.name   = "Win7-StarCraft"
+    vb.gui    = true
+    vb.memory = 4096
+    vb.cpus   = 2
+
+    # Gráficos – VBoxVGA es el más compatible con DirectDraw (SC 1.16.1 no usa Direct3D)
+    vb.customize ["modifyvm", :id, "--graphicscontroller", "vboxvga"]
+    vb.customize ["modifyvm", :id, "--vram",               "128"]
+
+    # Audio
+    vb.customize ["modifyvm", :id, "--audio",    "dsound"]
+    vb.customize ["modifyvm", :id, "--audioout", "on"]
+    vb.customize ["modifyvm", :id, "--audioin",  "off"]
+
+    # Rendimiento
+    vb.customize ["modifyvm", :id, "--ioapic",       "on"]
+    vb.customize ["modifyvm", :id, "--hwvirtex",     "on"]
+    vb.customize ["modifyvm", :id, "--nestedpaging", "on"]
+    vb.customize ["modifyvm", :id, "--vtxvpid",      "on"]
+    vb.customize ["modifyvm", :id, "--pae",          "on"]
+
+    vb.customize ["modifyvm", :id, "--clipboard-mode", "bidirectional"]
+
+    # Orden de arranque: DVD primero (instala Windows), luego disco duro
+    vb.customize ["modifyvm", :id, "--boot1", "dvd"]
+    vb.customize ["modifyvm", :id, "--boot2", "disk"]
+    vb.customize ["modifyvm", :id, "--boot3", "none"]
+    vb.customize ["modifyvm", :id, "--boot4", "none"]
+
+    # ── Primera ejecución: configurar almacenamiento ─────────────────────────
+    # Usa la existencia del VDI como indicador; si no existe, es la primera vez.
+    unless File.exist?(VDI_PATH)
+
+      vb.customize ["createmedium", "disk",
+        "--filename", VDI_PATH,
+        "--size",     "51200",
+        "--format",   "VDI"]
+
+      # Desconectar el disco mínimo del box dummy
+      vb.customize ["storageattach", :id,
+        "--storagectl", "IDE Controller",
+        "--port", "0", "--device", "0",
+        "--type", "hdd", "--medium", "none"]
+
+      # Conectar disco real de 50 GB
+      vb.customize ["storageattach", :id,
+        "--storagectl", "IDE Controller",
+        "--port", "0", "--device", "0",
+        "--type", "hdd", "--medium", VDI_PATH]
+
+      # Montar ISO de Windows 7 como DVD
+      vb.customize ["storageattach", :id,
+        "--storagectl", "IDE Controller",
+        "--port", "1", "--device", "0",
+        "--type", "dvddrive", "--medium", ISO_PATH]
+    end
+  end
+
+  # ── Trigger post-destroy ─────────────────────────────────────────────────────
+  config.trigger.after :destroy do |t|
+    t.name = "Aviso post-destroy"
+    t.ruby do |_env, _machine|
+      puts ""
+      puts "VM eliminada. El disco win7-install.vdi se conserva."
+      puts "Bórralo manualmente si quieres una instalación completamente limpia."
+    end
+  end
+
+  # ── Mensaje post-arranque ────────────────────────────────────────────────────
+  config.vm.post_up_message = <<~MSG
+
+    ┌──────────────────────────────────────────────────────────┐
+    │          Windows 7 – StarCraft VM iniciada               │
+    ├──────────────────────────────────────────────────────────┤
+    │  Interactúa desde la ventana de VirtualBox.              │
+    │                                                          │
+    │  PRIMERA VEZ:                                            │
+    │  1. Instala Windows 7 desde la ISO que arranca           │
+    │  2. Instala VirtualBox Guest Additions                   │
+    │  3. Copia BW-1161.exe a la VM e instala StarCraft        │
+    │                                                          │
+    │  Para pasar archivos: VirtualBox → Dispositivos →        │
+    │  Carpetas compartidas → Agregar carpeta del proyecto     │
+    │                                                          │
+    │  vagrant halt    → apagar la VM                          │
+    │  vagrant up      → encenderla de nuevo                   │
+    │  vagrant destroy → eliminar la VM                        │
+    └──────────────────────────────────────────────────────────┘
+
+  MSG
+
+end

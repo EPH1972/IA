@@ -28,3 +28,35 @@ __pycache__/
 
 # Environment Variables
 .env
+
+# Windows OS
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# ── VirtualBox / Vagrant ──────────────────────────────────────────────────────
+# Discos virtuales y snapshots
+*.vdi
+*.vmdk
+*.vhd
+# Imágenes de instalación
+*.iso
+# Instaladores binarios (BW-1161.exe, etc.)
+*.exe
+# Metadatos de máquina local generados por Vagrant
+.vagrant/
+
+# ── Proyecto_Final — runtime ──────────────────────────────────────────────────
+# Logs de entrenamiento y acciones (pueden crecer varios GB)
+Proyecto_Final/logs/
+# Checkpoints del modelo (*.pt ya ignorado arriba)
+Proyecto_Final/checkpoints/
+# Action log — una línea JSON por acción, crece con el entrenamiento
+*.jsonl

@@ -1,0 +1,33 @@
+# ── Configuración StarCraft 1 RL ─────────────────────────────────────────────
+
+vm:
+  name: "Win7-StarCraft"           # nombre de la VM en VirtualBox
+  resolution: [640, 480]           # resolución de pantalla de la VM
+  screenshot_dir: "C:/Temp/sc1_rl" # directorio temporal para capturas
+  action_delay: 0.15               # segundos de espera tras cada acción
+
+model:
+  # Forma de la observación: (frames_apilados, alto, ancho)
+  observation_shape: [4, 128, 128]
+  device: "cuda"                   # "cuda" o "cpu"
+  learning_rate: 3.0e-4
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_epsilon: 0.2
+  epochs: 4
+  batch_size: 64
+  rollout_steps: 2048
+  value_coef: 0.5
+  entropy_coef: 0.01
+  max_grad_norm: 0.5
+
+training:
+  total_timesteps: 1_000_000
+  max_episode_steps: 10_000
+  save_interval: 10_000
+  log_interval: 1_000
+  checkpoint_dir: "checkpoints"
+
+logging:
+  dir: "logs"
+  action_log_file: "action_log.jsonl"  # una línea JSON por acción enviada a la VM
