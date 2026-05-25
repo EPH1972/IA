@@ -39,11 +39,13 @@ class ActionLogger:
 
         self._step = 0
         self._episode = 0
+        self._reward_acc = 0.0   # acumulado de los últimos LOG_EVERY pasos
+        self._log_every  = 10
 
     # ── Acciones enviadas a la VM ─────────────────────────────────────────────
 
     def log_action(self, action_id: int, action_name: str, details: dict[str, Any]):
-        """Registra una acción en el JSONL y en el logger estándar."""
+        """Registra una acción en el JSONL cada paso; al logger cada LOG_EVERY pasos."""
         entry = {
             "ts": round(time.time(), 4),
             "episode": self._episode,
@@ -54,22 +56,31 @@ class ActionLogger:
         }
         self._action_file.write(json.dumps(entry) + "\n")
         self._action_file.flush()
-        self.logger.debug(
-            "→ VM | ep=%d step=%d | [%d] %s %s",
-            self._episode, self._step, action_id, action_name, details,
-        )
+
+        if self._step % self._log_every == 0:
+            self.logger.debug(
+                "→ VM | ep=%d step=%d | [%d] %s %s",
+                self._episode, self._step, action_id, action_name, details,
+            )
         self._step += 1
 
     # ── Recompensas ───────────────────────────────────────────────────────────
 
     def log_reward(self, reward: float, cumulative: float):
-        self.logger.debug("  reward=%.5f  cumulative=%.3f", reward, cumulative)
+        self._reward_acc += reward
+        if self._step % self._log_every == 0:
+            self.logger.debug(
+                "  reward(last %d)=%.4f  cumulative=%.3f",
+                self._log_every, self._reward_acc, cumulative,
+            )
+            self._reward_acc = 0.0
 
     # ── Control de episodios ──────────────────────────────────────────────────
 
     def log_episode_start(self):
         self._episode += 1
         self._step = 0
+        self._reward_acc = 0.0
         self.logger.info("══ EPISODIO %d INICIO ══", self._episode)
 
     def log_episode_end(self, total_reward: float, steps: int):

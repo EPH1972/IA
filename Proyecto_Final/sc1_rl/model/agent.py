@@ -1,6 +1,7 @@
 """
 SEC 1 — Agente PPO (Proximal Policy Optimization)
 Selecciona acciones, almacena transiciones y actualiza la política.
+Usa una red MLP sobre el vector de estado estructurado de TorchCraft.
 """
 from pathlib import Path
 
@@ -9,14 +10,15 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from sc1_rl.environment.action_space import N_ACTIONS
+from sc1_rl.torchcraft.action_space import N_ACTIONS_TC
+from sc1_rl.torchcraft.state_encoder import OBS_SIZE_TC
 from sc1_rl.model.memory import RolloutBuffer
-from sc1_rl.model.network import ActorCritic
+from sc1_rl.model.network_mlp import ActorCriticMLP
 
 
 class PPOAgent:
     """
-    Agente PPO con política Actor-Critic CNN.
+    Agente PPO con política MLP Actor-Critic.
 
     Flujo de uso:
         action, log_prob, value = agent.select_action(obs)
@@ -27,7 +29,8 @@ class PPOAgent:
 
     def __init__(
         self,
-        obs_shape: tuple[int, int, int],
+        obs_shape: tuple = (OBS_SIZE_TC,),
+        n_actions: int = N_ACTIONS_TC,
         device: str = "cuda",
         lr: float = 3e-4,
         gamma: float = 0.99,
@@ -43,23 +46,23 @@ class PPOAgent:
         self.device = torch.device(
             "cuda" if device == "cuda" and torch.cuda.is_available() else "cpu"
         )
-        self.gamma = gamma
-        self.gae_lambda = gae_lambda
-        self.clip_epsilon = clip_epsilon
-        self.epochs = epochs
-        self.batch_size = batch_size
+        self.gamma         = gamma
+        self.gae_lambda    = gae_lambda
+        self.clip_epsilon  = clip_epsilon
+        self.epochs        = epochs
+        self.batch_size    = batch_size
         self.rollout_steps = rollout_steps
-        self.value_coef = value_coef
-        self.entropy_coef = entropy_coef
+        self.value_coef    = value_coef
+        self.entropy_coef  = entropy_coef
         self.max_grad_norm = max_grad_norm
 
-        self.network = ActorCritic(
-            in_channels=obs_shape[0],
-            n_actions=N_ACTIONS,
+        self.network = ActorCriticMLP(
+            obs_size=obs_shape[0],
+            n_actions=n_actions,
         ).to(self.device)
 
         self.optimizer = optim.Adam(self.network.parameters(), lr=lr, eps=1e-5)
-        self.buffer = RolloutBuffer(rollout_steps, obs_shape, self.device)
+        self.buffer    = RolloutBuffer(rollout_steps, obs_shape, self.device)
 
     # ── Inferencia ────────────────────────────────────────────────────────────
 
@@ -96,10 +99,12 @@ class PPOAgent:
         last_value = self.get_value(last_obs)
 
         totals: dict[str, float] = {
-            "policy_loss": 0.0,
-            "value_loss": 0.0,
-            "entropy": 0.0,
-            "total_loss": 0.0,
+            "policy_loss":   0.0,
+            "value_loss":    0.0,
+            "entropy":       0.0,
+            "total_loss":    0.0,
+            "approx_kl":     0.0,
+            "clip_fraction": 0.0,
         }
         n_updates = 0
 
@@ -111,18 +116,22 @@ class PPOAgent:
                     obs_b, act_b
                 )
 
-                ratio = torch.exp(new_logp - logp_b)
-                pg1 = -adv_b * ratio
-                pg2 = -adv_b * torch.clamp(
-                    ratio, 1 - self.clip_epsilon, 1 + self.clip_epsilon
-                )
-                policy_loss = torch.max(pg1, pg2).mean()
-                value_loss = nn.functional.mse_loss(new_value, ret_b)
+                log_ratio = new_logp - logp_b
+                ratio     = torch.exp(log_ratio)
+
+                with torch.no_grad():
+                    approx_kl     = ((ratio - 1) - log_ratio).mean().item()
+                    clip_fraction = ((ratio - 1.0).abs() > self.clip_epsilon).float().mean().item()
+
+                pg1   = -adv_b * ratio
+                pg2   = -adv_b * torch.clamp(ratio, 1 - self.clip_epsilon, 1 + self.clip_epsilon)
+                policy_loss  = torch.max(pg1, pg2).mean()
+                value_loss   = nn.functional.mse_loss(new_value, ret_b)
                 entropy_loss = -entropy.mean()
 
                 loss = (
                     policy_loss
-                    + self.value_coef * value_loss
+                    + self.value_coef   * value_loss
                     + self.entropy_coef * entropy_loss
                 )
 
@@ -131,13 +140,17 @@ class PPOAgent:
                 nn.utils.clip_grad_norm_(self.network.parameters(), self.max_grad_norm)
                 self.optimizer.step()
 
-                totals["policy_loss"] += policy_loss.item()
-                totals["value_loss"] += value_loss.item()
-                totals["entropy"] += entropy.mean().item()
-                totals["total_loss"] += loss.item()
+                totals["policy_loss"]   += policy_loss.item()
+                totals["value_loss"]    += value_loss.item()
+                totals["entropy"]       += entropy.mean().item()
+                totals["total_loss"]    += loss.item()
+                totals["approx_kl"]     += approx_kl
+                totals["clip_fraction"] += clip_fraction
                 n_updates += 1
 
         self.buffer.reset()
+        if n_updates == 0:
+            return totals
         return {k: v / n_updates for k, v in totals.items()}
 
     # ── Persistencia ──────────────────────────────────────────────────────────
@@ -145,13 +158,29 @@ class PPOAgent:
     def save(self, path: str):
         torch.save(
             {
-                "network": self.network.state_dict(),
+                "network":   self.network.state_dict(),
                 "optimizer": self.optimizer.state_dict(),
             },
             path,
         )
 
     def load(self, path: str):
-        ckpt = torch.load(path, map_location=self.device, weights_only=True)
-        self.network.load_state_dict(ckpt["network"])
-        self.optimizer.load_state_dict(ckpt["optimizer"])
+        ckpt    = torch.load(path, map_location=self.device, weights_only=True)
+        saved   = ckpt["network"]
+        current = self.network.state_dict()
+
+        unknown    = [k for k in saved if k not in current]
+        mismatched = [k for k in saved if k in current and saved[k].shape != current[k].shape]
+        skipped    = set(unknown) | set(mismatched)
+        if skipped:
+            if unknown:
+                print(f"[load] Capas desconocidas (arquitectura anterior): {unknown}")
+            if mismatched:
+                print(f"[load] Capas ignoradas por cambio de tamaño: {mismatched}")
+            compatible = {k: v for k, v in saved.items() if k not in skipped}
+            current.update(compatible)
+            self.network.load_state_dict(current)
+            print("[load] Optimizer reiniciado (pesos parciales).")
+        else:
+            self.network.load_state_dict(saved)
+            self.optimizer.load_state_dict(ckpt["optimizer"])

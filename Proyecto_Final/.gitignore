@@ -1,0 +1,41 @@
+# ── Grandes binarios / imágenes de disco ──────────────────────────────────────
+*.iso
+*.nrg
+*.vdi
+*.exe
+*.zip
+*.dll
+
+# ── VM y Vagrant ──────────────────────────────────────────────────────────────
+.vagrant/
+VBox/
+win7-install.vdi
+
+# ── Mapas y archivos de la VM ─────────────────────────────────────────────────
+tc_maps/
+torchcraft.ini
+ddraw.ini
+cnc-ddraw.zip
+
+# ── Artefactos de entrenamiento (generados en tiempo de ejecución) ─────────────
+checkpoints/
+logs/
+*.pt
+*.png
+
+# ── Entorno Python ────────────────────────────────────────────────────────────
+proyecto-env/
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+
+# ── Archivos temporales / debug ───────────────────────────────────────────────
+debug_run.txt
+prepatch.log
+*.log
+sc_state.png
+zmq_test.py
+crear-caja.ps1

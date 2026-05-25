@@ -2,7 +2,7 @@
 SEC 1 — Espacio de acciones de StarCraft 1
 Convierte un índice discreto en una acción estructurada (Action).
 """
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import IntEnum
 
 
@@ -30,7 +30,7 @@ class Action:
 
 
 # ── Configuración del grid de clics ──────────────────────────────────────────
-GRID_SIZE = 16              # 16x16 = 256 posiciones por botón
+GRID_SIZE = 8               # 8x8 = 64 posiciones por botón (celdas de 80×60 px en 640×480)
 
 # ── Hotkeys de StarCraft 1 ────────────────────────────────────────────────────
 KEYBOARD_ACTIONS: list[str] = [
@@ -45,8 +45,6 @@ KEYBOARD_ACTIONS: list[str] = [
     "m",        # move
     "g",        # gather / return cargo
     "escape",
-    "enter",
-    "f10",      # menú de juego
 ]
 
 N_GRID = GRID_SIZE * GRID_SIZE          # 256
@@ -61,7 +59,7 @@ N_ACTIONS = (
     + N_KEYBOARD         # teclado
     + N_CONTROL_GROUPS   # seleccionar grupo
     + N_CONTROL_GROUPS   # asignar grupo (Ctrl+N)
-)  # total: 548
+)  # total: 162 (con GRID_SIZE=8)
 
 
 def decode_action(action_id: int) -> Action:

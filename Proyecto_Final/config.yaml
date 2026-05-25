@@ -1,15 +1,12 @@
-# ── Configuración StarCraft 1 RL ─────────────────────────────────────────────
+# ── Configuración StarCraft 1 RL (modo TorchCraft) ────────────────────────────
 
-vm:
-  name: "Win7-StarCraft"           # nombre de la VM en VirtualBox
-  resolution: [640, 480]           # resolución de pantalla de la VM
-  screenshot_dir: "C:/Temp/sc1_rl" # directorio temporal para capturas
-  action_delay: 0.15               # segundos de espera tras cada acción
+torchcraft:
+  host: "192.168.0.23"  # Bridge adapter IP — bypasses VirtualBox NAT
+  port: 11111          # puerto ZMQ por defecto de TorchCraft
+  connect_timeout: 120 # segundos de espera hasta que BWAPI inicie el servidor
 
 model:
-  # Forma de la observación: (frames_apilados, alto, ancho)
-  observation_shape: [4, 128, 128]
-  device: "cuda"                   # "cuda" o "cpu"
+  device: "cuda"         # "cuda" o "cpu"
   learning_rate: 3.0e-4
   gamma: 0.99
   gae_lambda: 0.95
@@ -23,11 +20,11 @@ model:
 
 training:
   total_timesteps: 1_000_000
-  max_episode_steps: 10_000
-  save_interval: 10_000
+  max_episode_steps: 50_000
+  save_interval: 1_000
   log_interval: 1_000
   checkpoint_dir: "checkpoints"
 
 logging:
   dir: "logs"
-  action_log_file: "action_log.jsonl"  # una línea JSON por acción enviada a la VM
+  action_log_file: "action_log.jsonl"
