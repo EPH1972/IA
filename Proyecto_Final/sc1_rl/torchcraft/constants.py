@@ -8,7 +8,7 @@ try:
     import torchcraft as tc
     _TC_AVAILABLE = True
 
-    # ── Tipos de unidad ──────────────────────────────────────────────────────
+    # ── Tipos de unidad Terran ───────────────────────────────────────────────
     UTYPE_SCV              = tc.BW.UnitType.Terran_SCV
     UTYPE_MARINE           = tc.BW.UnitType.Terran_Marine
     UTYPE_FIREBAT          = tc.BW.UnitType.Terran_Firebat
@@ -26,6 +26,15 @@ try:
     UTYPE_MINERAL_FIELD_3  = tc.BW.UnitType.Resource_Mineral_Field_Type_3
     UTYPE_VESPENE          = tc.BW.UnitType.Resource_Vespene_Geyser
     UTYPE_REFINERY         = tc.BW.UnitType.Terran_Refinery
+    # ── Tipos de unidad Zerg ─────────────────────────────────────────────────
+    UTYPE_ZERGLING         = tc.BW.UnitType.Zerg_Zergling
+    UTYPE_HYDRALISK        = tc.BW.UnitType.Zerg_Hydralisk
+    UTYPE_DRONE            = tc.BW.UnitType.Zerg_Drone
+    # ── Tipos de unidad Protoss ──────────────────────────────────────────────
+    UTYPE_PROBE            = tc.BW.UnitType.Protoss_Probe
+    UTYPE_ZEALOT           = tc.BW.UnitType.Protoss_Zealot
+    UTYPE_DRAGOON          = tc.BW.UnitType.Protoss_Dragoon
+    UTYPE_HIGH_TEMPLAR     = tc.BW.UnitType.Protoss_High_Templar
 
     # ── Tipos de comando BWAPI ───────────────────────────────────────────────
     CMD_MOVE               = tc.BW.UnitCommandType.Move
@@ -39,7 +48,8 @@ try:
 except ImportError:
     _TC_AVAILABLE = False
 
-    # Enteros BWAPI (fuente: bwapi.github.io/bwapi/class_b_w_a_p_i_1_1_unit_type.html)
+    # Enteros BWAPI 4.x (fuente: bwapi.github.io/bwapi/class_b_w_a_p_i_1_1_unit_type.html)
+    # ── Terran ───────────────────────────────────────────────────────────────
     UTYPE_MARINE           = 0
     UTYPE_GHOST            = 1
     UTYPE_VULTURE          = 2
@@ -59,6 +69,15 @@ except ImportError:
     UTYPE_MINERAL_FIELD_2  = 177
     UTYPE_MINERAL_FIELD_3  = 178
     UTYPE_VESPENE          = 188
+    # ── Zerg ─────────────────────────────────────────────────────────────────
+    UTYPE_ZERGLING         = 37
+    UTYPE_HYDRALISK        = 38
+    UTYPE_DRONE            = 41
+    # ── Protoss ──────────────────────────────────────────────────────────────
+    UTYPE_PROBE            = 63
+    UTYPE_ZEALOT           = 65
+    UTYPE_DRAGOON          = 66
+    UTYPE_HIGH_TEMPLAR     = 67
 
     CMD_MOVE               = 10   # BWAPI UnitCommandType::Move
     CMD_ATTACK_MOVE        = 1    # BWAPI UnitCommandType::Attack_Move
@@ -70,11 +89,22 @@ except ImportError:
 
 
 # ── Conjuntos de clasificación ─────────────────────────────────────────────────
-WORKER_TYPES = frozenset({UTYPE_SCV})
+WORKER_TYPES = frozenset({
+    UTYPE_SCV,     # Terran
+    UTYPE_PROBE,   # Protoss
+    UTYPE_DRONE,   # Zerg
+})
 
+# Unidades de combate que controla el agente.
+# dragoons_zealots.scm: el jugador humano controla DRAGONES.
+# m5v5_c_far.scm:       el jugador humano controla MARINES.
 ARMY_TYPES = frozenset({
-    UTYPE_MARINE, UTYPE_FIREBAT, UTYPE_GHOST,
-    UTYPE_VULTURE, UTYPE_SIEGE_TANK,
+    # Terran
+    UTYPE_MARINE, UTYPE_FIREBAT, UTYPE_GHOST, UTYPE_VULTURE, UTYPE_SIEGE_TANK,
+    # Protoss — el agente controla Dragones; Zealots quedan fuera (=enemigo)
+    UTYPE_DRAGOON,
+    # Zerg (si algún día el agente juega Zerg)
+    UTYPE_ZERGLING, UTYPE_HYDRALISK,
 })
 
 BUILDING_TYPES = frozenset({

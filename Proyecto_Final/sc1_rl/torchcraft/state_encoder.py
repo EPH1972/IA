@@ -15,6 +15,8 @@ import numpy as np
 from sc1_rl.torchcraft.constants import (
     WORKER_TYPES, ARMY_TYPES, BUILDING_TYPES, RESOURCE_TYPES,
 )
+import logging as _logging
+_log = _logging.getLogger("sc1_rl")
 
 
 # ── Dimensiones del vector de observación ────────────────────────────────────
@@ -80,6 +82,7 @@ class StateEncoder:
     def __init__(self, map_w: int = 1024, map_h: int = 1024):
         self.map_w = map_w
         self.map_h = map_h
+        self._debug_logged = False
 
     def update_map_size(self, state) -> None:
         """Extrae dimensiones del mapa del estado y actualiza el encoder."""
@@ -89,8 +92,22 @@ class StateEncoder:
             self.map_h = int(mh) * 8
         except Exception:
             pass
+        self._debug_logged = False  # resetear debug al inicio de cada episodio
+
+    def _debug_unit_types(self, state) -> None:
+        """Log unit types on the first frame to verify BWAPI type IDs."""
+        if self._debug_logged:
+            return
+        self._debug_logged = True
+        try:
+            for pid, units in state.units.items():
+                type_ids = sorted({u.type for u in units.values()})
+                _log.info("DEBUG unit types pid=%s → types=%s", pid, type_ids)
+        except Exception as exc:
+            _log.info("DEBUG unit types error: %s", exc)
 
     def encode(self, state) -> np.ndarray:
+        self._debug_unit_types(state)
         obs = np.zeros(OBS_SIZE_TC, dtype=np.float32)
         ptr = 0
 
@@ -113,12 +130,16 @@ class StateEncoder:
         try:
             for unit in state.units[state.player_id].values():
                 utype = unit.type
+                if utype in RESOURCE_TYPES:
+                    continue
                 if utype in WORKER_TYPES:
                     workers.append(unit)
                 elif utype in BUILDING_TYPES:
                     buildings.append(unit)
-                else:
+                elif utype in ARMY_TYPES:
                     army.append(unit)
+                # Unidades no reconocidas bajo el propio pid se ignoran aquí
+                # (se detectarán como enemigos en el bloque de abajo si procede)
         except Exception:
             pass
 
