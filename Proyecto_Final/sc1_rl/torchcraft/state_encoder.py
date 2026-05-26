@@ -83,6 +83,8 @@ class StateEncoder:
         self.map_w = map_w
         self.map_h = map_h
         self._debug_logged = False
+        self._own_unit_ids   = None
+        self._enemy_unit_ids = None
 
     def update_map_size(self, state) -> None:
         """Extrae dimensiones del mapa del estado y actualiza el encoder."""
@@ -92,7 +94,9 @@ class StateEncoder:
             self.map_h = int(mh) * 8
         except Exception:
             pass
-        self._debug_logged = False  # resetear debug al inicio de cada episodio
+        self._debug_logged   = False
+        self._own_unit_ids   = None   # reset team split each episode
+        self._enemy_unit_ids = None
 
     def _debug_unit_types(self, state) -> None:
         """Log unit types on the first frame to verify BWAPI type IDs."""
@@ -135,18 +139,28 @@ class StateEncoder:
         workers: list   = []
         army: list      = []
         buildings: list = []
-        own_pid = state.player_id
+
+        # Inicializar split posicional en el primer frame del episodio
+        if self._own_unit_ids is None:
+            all_u = [
+                u for units in state.units.values() for u in units.values()
+                if u.type not in RESOURCE_TYPES and u.type not in BUILDING_TYPES
+            ]
+            if len(all_u) >= 2:
+                all_u.sort(key=lambda u: u.x + u.y)
+                mid = len(all_u) // 2
+                self._own_unit_ids   = frozenset(u.id for u in all_u[:mid])
+                self._enemy_unit_ids = frozenset(u.id for u in all_u[mid:])
 
         try:
-            for pid_group, pid_units in state.units.items():
+            for pid_units in state.units.values():
                 for unit in pid_units.values():
                     utype = unit.type
                     if utype in RESOURCE_TYPES:
                         continue
-                    # Determinar propietario real usando player_id individual
-                    unit_pid = getattr(unit, "player_id", -1)
-                    is_own = (unit_pid == own_pid) if unit_pid >= 0 else (pid_group == own_pid)
-                    if not is_own:
+                    if self._own_unit_ids is None:
+                        continue
+                    if unit.id not in self._own_unit_ids:
                         continue
                     if utype in WORKER_TYPES:
                         workers.append(unit)
@@ -196,13 +210,11 @@ class StateEncoder:
         # ── Enemigos visibles ─────────────────────────────────────────────────
         enemies: list = []
         try:
-            for pid_group, pid_units in state.units.items():
+            for pid_units in state.units.values():
                 for u in pid_units.values():
                     if u.type in RESOURCE_TYPES:
                         continue
-                    unit_pid = getattr(u, "player_id", -1)
-                    is_own = (unit_pid == own_pid) if unit_pid >= 0 else (pid_group == own_pid)
-                    if not is_own:
+                    if self._enemy_unit_ids and u.id in self._enemy_unit_ids:
                         enemies.append(u)
         except Exception:
             pass

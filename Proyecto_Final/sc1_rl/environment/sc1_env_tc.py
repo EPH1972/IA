@@ -113,9 +113,11 @@ class SC1EnvTC(gym.Env):
             # por si BWEnv no envía is_terminal correctamente.
             n_army   = self.reward._prev_army_count
             n_enemy  = self.reward._prev_enemy_count
+            # Solo terminar por conteo si realmente hemos visto unidades antes
+            max_enemy = getattr(self.reward, "_max_enemy_seen", 0)
             combat_over = (
                 n_army  is not None and n_army  == 0 or
-                n_enemy is not None and n_enemy == 0
+                (n_enemy is not None and n_enemy == 0 and max_enemy > 0)
             )
             truncated = state.game_ended or combat_over
 

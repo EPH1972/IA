@@ -57,6 +57,9 @@ class TCRewardCalculator:
         self._prev_army_count  = None
         self._prev_avg_dist    = None
         self._cumulative       = 0.0
+        self._own_unit_ids     = None   # set on first classify call
+        self._enemy_unit_ids   = None
+        self._max_enemy_seen   = 0      # guard for combat_over
 
     def reset(self) -> None:
         self._prev_enemy_hp    = None
@@ -64,42 +67,53 @@ class TCRewardCalculator:
         self._prev_army_count  = None
         self._prev_avg_dist    = None
         self._cumulative       = 0.0
+        self._own_unit_ids     = None
+        self._enemy_unit_ids   = None
+        self._max_enemy_seen   = 0
+
+    def _init_teams_by_position(self, state) -> None:
+        """Split units into own/enemy by initial position diagonal.
+
+        BWEnv reports all unit player_ids as 0, so the only reliable separator
+        is the initial position: one team starts near (0,0), the other near the
+        far corner.  Lower x+y diagonal → own team (player 0 convention).
+        """
+        all_u = [
+            u for units in state.units.values() for u in units.values()
+            if u.type not in RESOURCE_TYPES and u.type not in BUILDING_TYPES
+        ]
+        if len(all_u) < 2:
+            return
+        all_u.sort(key=lambda u: u.x + u.y)
+        mid = len(all_u) // 2
+        self._own_unit_ids   = frozenset(u.id for u in all_u[:mid])
+        self._enemy_unit_ids = frozenset(u.id for u in all_u[mid:])
+        import logging
+        logging.getLogger("sc1_rl").info(
+            "TEAMS own_ids=%s enemy_ids=%s",
+            sorted(self._own_unit_ids), sorted(self._enemy_unit_ids),
+        )
 
     def _classify(self, state):
-        """Returns (army_units, enemy_units) as lists of UnitState.
+        """Returns (army_units, enemy_units) as lists of UnitState."""
+        if self._own_unit_ids is None:
+            self._init_teams_by_position(state)
 
-        Uses individual unit.player_id (VT66) as primary classifier — works
-        even when BWEnv puts all units under the same group pid (TorchCraft quirk).
-        Falls back to type-based heuristic if player_id is not populated.
-        """
-        own_pid = state.player_id
         army    = []
         enemies = []
-
         try:
-            for pid, units in state.units.items():
+            for units in state.units.values():
                 for u in units.values():
                     if u.type in RESOURCE_TYPES:
                         continue
-                    # Primary: use the unit's own player_id field
-                    unit_pid = getattr(u, "player_id", -1)
-                    if unit_pid >= 0:
-                        if unit_pid == own_pid:
-                            if u.type in ARMY_TYPES or u.type not in BUILDING_TYPES:
-                                army.append(u)
-                        else:
-                            enemies.append(u)
-                    # Fallback: group pid + type-based heuristic
-                    elif pid == own_pid:
-                        if u.type in ARMY_TYPES:
-                            army.append(u)
-                        elif u.type not in WORKER_TYPES and u.type not in BUILDING_TYPES:
-                            enemies.append(u)
-                    else:
+                    if self._own_unit_ids is None:
+                        continue
+                    if u.id in self._own_unit_ids:
+                        army.append(u)
+                    elif u.id in self._enemy_unit_ids:
                         enemies.append(u)
         except Exception:
             pass
-
         return army, enemies
 
     def compute(self, state, action) -> float:
@@ -155,6 +169,8 @@ class TCRewardCalculator:
         self._prev_army_count  = army_count
         self._last_army        = army
         self._last_enemies     = enemies
+        if enemy_count > self._max_enemy_seen:
+            self._max_enemy_seen = enemy_count
 
         self._cumulative += reward
         return reward
