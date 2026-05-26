@@ -14,6 +14,11 @@ _METRICS_HEADER = [
     "policy_loss", "value_loss", "entropy", "approx_kl", "clip_fraction",
 ]
 
+_EP_HEADER = [
+    "global_step", "episode", "reward", "steps", "fps",
+    "army_count", "enemy_count", "army_hp_avg", "enemy_hp_avg",
+]
+
 
 class Trainer:
     """Ejecuta el bucle de entrenamiento PPO."""
@@ -49,10 +54,7 @@ class Trainer:
         # CSV de episodios
         self._ep_path = Path("logs/episodes.csv")
         self._ep_file   = open(self._ep_path, "a", newline="", encoding="utf-8")
-        self._ep_writer = csv.DictWriter(
-            self._ep_file,
-            fieldnames=["global_step", "episode", "reward", "steps", "fps"],
-        )
+        self._ep_writer = csv.DictWriter(self._ep_file, fieldnames=_EP_HEADER)
         if self._ep_path.stat().st_size == 0:
             self._ep_writer.writeheader()
             self._ep_file.flush()
@@ -63,13 +65,14 @@ class Trainer:
         episode = 0
         ep_reward = 0.0
         ep_steps  = 0
+        ep_info   = {}
         start = time.time()
 
         self.log.log_info("Inicio de entrenamiento — %d pasos totales", self.total_timesteps)
 
         while global_step < self.total_timesteps:
             action, log_prob, value = self.agent.select_action(obs)
-            next_obs, reward, terminated, truncated, _ = self.env.step(action)
+            next_obs, reward, terminated, truncated, info = self.env.step(action)
             done = terminated or truncated
 
             self.agent.store(obs, action, log_prob, float(reward), value, done)
@@ -77,19 +80,26 @@ class Trainer:
             global_step += 1
             ep_reward  += float(reward)
             ep_steps   += 1
+            if done:
+                ep_info = info  # contiene unit_stats al final del episodio
 
             if done:
                 fps = global_step / (time.time() - start)
                 self._ep_writer.writerow({
-                    "global_step": global_step,
-                    "episode":     episode + 1,
-                    "reward":      round(ep_reward, 4),
-                    "steps":       ep_steps,
-                    "fps":         round(fps, 1),
+                    "global_step":  global_step,
+                    "episode":      episode + 1,
+                    "reward":       round(ep_reward, 4),
+                    "steps":        ep_steps,
+                    "fps":          round(fps, 1),
+                    "army_count":   ep_info.get("army_count",   0),
+                    "enemy_count":  ep_info.get("enemy_count",  0),
+                    "army_hp_avg":  ep_info.get("army_hp_avg",  0.0),
+                    "enemy_hp_avg": ep_info.get("enemy_hp_avg", 0.0),
                 })
                 self._ep_file.flush()
                 ep_reward = 0.0
                 ep_steps  = 0
+                ep_info   = {}
                 obs, _ = self.env.reset()
                 episode += 1
 

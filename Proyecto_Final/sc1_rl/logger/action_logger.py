@@ -24,6 +24,7 @@ class ActionLogger:
         self._action_file = open(self._action_path, "a", encoding="utf-8")
 
         self.logger = logging.getLogger("sc1_rl")
+        self.logger.propagate = False
         if not self.logger.handlers:
             fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
@@ -45,7 +46,7 @@ class ActionLogger:
     # ── Acciones enviadas a la VM ─────────────────────────────────────────────
 
     def log_action(self, action_id: int, action_name: str, details: dict[str, Any]):
-        """Registra una acción en el JSONL cada paso; al logger cada LOG_EVERY pasos."""
+        """Registra una acción en el JSONL. Sin salida a consola por paso."""
         entry = {
             "ts": round(time.time(), 4),
             "episode": self._episode,
@@ -56,24 +57,12 @@ class ActionLogger:
         }
         self._action_file.write(json.dumps(entry) + "\n")
         self._action_file.flush()
-
-        if self._step % self._log_every == 0:
-            self.logger.debug(
-                "→ VM | ep=%d step=%d | [%d] %s %s",
-                self._episode, self._step, action_id, action_name, details,
-            )
         self._step += 1
 
     # ── Recompensas ───────────────────────────────────────────────────────────
 
     def log_reward(self, reward: float, cumulative: float):
         self._reward_acc += reward
-        if self._step % self._log_every == 0:
-            self.logger.debug(
-                "  reward(last %d)=%.4f  cumulative=%.3f",
-                self._log_every, self._reward_acc, cumulative,
-            )
-            self._reward_acc = 0.0
 
     # ── Control de episodios ──────────────────────────────────────────────────
 

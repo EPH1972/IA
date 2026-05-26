@@ -106,9 +106,25 @@ class SC1EnvTC(gym.Env):
         state = self.tc.state
 
         if ok and state is not None:
-            obs = self.encoder.encode(state)
+            obs    = self.encoder.encode(state)
             reward = self.reward.compute(state, decoded)
-            truncated = state.game_ended
+
+            # Fallback: terminar si todos los aliados o todos los enemigos mueren,
+            # por si BWEnv no envía is_terminal correctamente.
+            n_army   = self.reward._prev_army_count
+            n_enemy  = self.reward._prev_enemy_count
+            combat_over = (
+                n_army  is not None and n_army  == 0 or
+                n_enemy is not None and n_enemy == 0
+            )
+            truncated = state.game_ended or combat_over
+
+            # Log periódico de unidades para diagnóstico
+            if self._step_count % 200 == 0:
+                self.log.log_info(
+                    "UNITS | step=%d  army=%s  enemies=%s",
+                    self._step_count, n_army, n_enemy,
+                )
         else:
             obs       = np.zeros(OBS_SIZE_TC, dtype=np.float32)
             reward    = 0.0
@@ -119,10 +135,12 @@ class SC1EnvTC(gym.Env):
 
         self.log.log_reward(reward, self.reward.cumulative)
 
+        info = {"step": self._step_count}
         if terminated or truncated:
             self.log.log_episode_end(self.reward.cumulative, self._step_count)
+            info.update(self.reward.unit_stats)
 
-        return obs, reward, terminated, truncated, {"step": self._step_count}
+        return obs, reward, terminated, truncated, info
 
     def close(self):
         self.tc.close()

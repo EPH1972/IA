@@ -211,6 +211,22 @@ class TorchCraftClient:
 
     def close(self):
         if self._sock is not None:
+            # Completar el intercambio REQ/REP pendiente antes de cerrar,
+            # para dejar BWEnv en estado limpio (esperando HandshakeClient).
+            # Así al relanzar main.py no es necesario reiniciar StarCraft.
+            try:
+                self._sock.setsockopt(zmq.SNDTIMEO, 2_000)
+                self._sock.setsockopt(zmq.RCVTIMEO, 2_000)
+                # Si hay una respuesta pendiente de recibir, la descartamos
+                self._sock.recv()
+            except Exception:
+                pass
+            try:
+                # Enviamos un NOOP final y esperamos la respuesta
+                self._sock.send(encode_commands(self._uid, []))
+                self._sock.recv()
+            except Exception:
+                pass
             try:
                 self._sock.close()
             except Exception:

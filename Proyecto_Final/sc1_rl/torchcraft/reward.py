@@ -5,6 +5,7 @@ Usa estado estructurado de BWAPI en lugar de OCR/brightness.
 Escenario objetivo: m5v5_c_far.scm — 5 Marines Terran vs 5 Zerglings
 La recompensa se centra en combate: matar Zerglings y mantener vivos los Marines.
 """
+import math
 from sc1_rl.torchcraft.action_space import TCActionType
 from sc1_rl.torchcraft.constants import (
     ARMY_TYPES, WORKER_TYPES, BUILDING_TYPES, RESOURCE_TYPES,
@@ -54,12 +55,14 @@ class TCRewardCalculator:
         self._prev_enemy_hp    = None
         self._prev_enemy_count = None
         self._prev_army_count  = None
+        self._prev_avg_dist    = None
         self._cumulative       = 0.0
 
     def reset(self) -> None:
         self._prev_enemy_hp    = None
         self._prev_enemy_count = None
         self._prev_army_count  = None
+        self._prev_avg_dist    = None
         self._cumulative       = 0.0
 
     def _classify(self, state):
@@ -131,9 +134,22 @@ class TCRewardCalculator:
         if self._prev_army_count is not None and self._prev_army_count > 0 and army_count == 0:
             reward -= self.loss_penalty
 
+        # ── Distancia media al enemigo (incentiva acercarse) ──────────────────
+        if len(army) > 0 and len(enemies) > 0:
+            avg_dist = sum(
+                min(math.hypot(m.x - e.x, m.y - e.y) for e in enemies)
+                for m in army
+            ) / len(army)
+            if self._prev_avg_dist is not None:
+                dist_delta = self._prev_avg_dist - avg_dist
+                reward += dist_delta * 0.0005
+            self._prev_avg_dist = avg_dist
+
         self._prev_enemy_hp    = enemy_hp
         self._prev_enemy_count = enemy_count
         self._prev_army_count  = army_count
+        self._last_army        = army
+        self._last_enemies     = enemies
 
         self._cumulative += reward
         return reward
@@ -141,3 +157,21 @@ class TCRewardCalculator:
     @property
     def cumulative(self) -> float:
         return self._cumulative
+
+    @property
+    def unit_stats(self) -> dict:
+        """Estadísticas de unidades del último paso — para loggear al final del episodio."""
+        army    = getattr(self, "_last_army",    []) or []
+        enemies = getattr(self, "_last_enemies", []) or []
+
+        def avg_hp(units):
+            if not units:
+                return 0.0
+            return sum(u.health / max(u.max_health, 1) for u in units) / len(units)
+
+        return {
+            "army_count":    len(army),
+            "enemy_count":   len(enemies),
+            "army_hp_avg":   round(avg_hp(army),    3),
+            "enemy_hp_avg":  round(avg_hp(enemies), 3),
+        }

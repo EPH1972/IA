@@ -29,21 +29,8 @@ class CommandExecutor:
 
     def build_commands(self, action: TCAction, state) -> list:
         t = action.action_type
-
-        if t == TCActionType.NOOP:
-            return []
-        if t == TCActionType.GATHER_IDLE_WORKERS:
-            return self._gather_idle(state)
         if t == TCActionType.ATTACK_MOVE:
             return self._attack_move(action, state)
-        if t == TCActionType.BUILD_SUPPLY_DEPOT:
-            return self._build(action, state, UTYPE_SUPPLY)
-        if t == TCActionType.BUILD_BARRACKS:
-            return self._build(action, state, UTYPE_BARRACKS)
-        if t == TCActionType.TRAIN_SCV:
-            return self._train(state, UTYPE_SCV, UTYPE_CC)
-        if t == TCActionType.TRAIN_MARINE:
-            return self._train(state, UTYPE_MARINE, UTYPE_BARRACKS)
         return []
 
     # ── Helpers de coordenadas ────────────────────────────────────────────────
