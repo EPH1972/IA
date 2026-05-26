@@ -14,6 +14,13 @@ import math
 from sc1_rl.torchcraft.action_space import TCActionType, TCAction, GRID_SIZE
 
 logger = logging.getLogger("sc1_rl")
+
+# TorchCraft game-level command codes (NOT BWAPI UnitCommandType)
+# code=0  → noop
+# code=1  → QUIT  ← never send this!
+# code=21 → COMMAND_UNIT_PROTECTED (only own units execute)
+TC_CMD_UNIT_PROTECTED = 21
+
 from sc1_rl.torchcraft.constants import (
     WORKER_TYPES, ARMY_TYPES, BUILDING_TYPES, RESOURCE_TYPES,
     MINERAL_TYPES, GAS_SOURCE_TYPES,
@@ -96,7 +103,8 @@ class CommandExecutor:
                     # Solo unidades de combate (no edificios, workers, recursos)
                     if unit.type in BUILDING_TYPES or unit.type in WORKER_TYPES or unit.type in RESOURCE_TYPES:
                         continue
-                    commands.append([CMD_ATTACK_MOVE, uid, -1, x, y, 0])
+                    # TorchCraft format: [TC_CMD_UNIT_PROTECTED, uid, bwapi_cmd, target_uid, x, y, extra]
+                    commands.append([TC_CMD_UNIT_PROTECTED, uid, CMD_ATTACK_MOVE, -1, x, y, 0])
             if commands:
                 logger.debug(
                     "ATTACK_MOVE → %d units → (%d,%d)  uids=%s",
