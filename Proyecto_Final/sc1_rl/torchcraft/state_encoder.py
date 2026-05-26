@@ -100,22 +100,18 @@ class StateEncoder:
             return
         self._debug_logged = True
         try:
-            # Mostrar qué valores tienen las constantes en tiempo de ejecución
+            from collections import Counter
+            own_pid = state.player_id
+            all_units = [u for units in state.units.values() for u in units.values()]
+            by_upid = Counter(getattr(u, "player_id", -1) for u in all_units)
+            by_type = Counter(u.type for u in all_units)
             _log.info(
-                "CONSTANTS ARMY_TYPES=%s WORKER_TYPES=%s",
-                sorted(ARMY_TYPES), sorted(WORKER_TYPES),
+                "DEBUG own_pid=%s | units_by_player_id=%s | units_by_type=%s",
+                own_pid, dict(by_upid), dict(by_type),
             )
-            for pid, units in state.units.items():
-                if not units:
-                    continue
-                from collections import Counter
-                counts = Counter(u.type for u in units.values())
-                # Posición del primer y último unit para ver si hay dos grupos
-                positions = [(u.type, u.x, u.y) for u in list(units.values())[:6]]
-                _log.info(
-                    "DEBUG pid=%s | type_counts=%s | first_units(type,x,y)=%s",
-                    pid, dict(counts), positions,
-                )
+            # Muestra las primeras unidades con su player_id y tipo
+            sample = [(getattr(u,"player_id",-1), u.type, u.x, u.y) for u in all_units[:8]]
+            _log.info("DEBUG sample (pid,type,x,y): %s", sample)
         except Exception as exc:
             _log.info("DEBUG unit types error: %s", exc)
 
@@ -139,20 +135,25 @@ class StateEncoder:
         workers: list   = []
         army: list      = []
         buildings: list = []
+        own_pid = state.player_id
 
         try:
-            for unit in state.units[state.player_id].values():
-                utype = unit.type
-                if utype in RESOURCE_TYPES:
-                    continue
-                if utype in WORKER_TYPES:
-                    workers.append(unit)
-                elif utype in BUILDING_TYPES:
-                    buildings.append(unit)
-                elif utype in ARMY_TYPES:
-                    army.append(unit)
-                # Unidades no reconocidas bajo el propio pid se ignoran aquí
-                # (se detectarán como enemigos en el bloque de abajo si procede)
+            for pid_group, pid_units in state.units.items():
+                for unit in pid_units.values():
+                    utype = unit.type
+                    if utype in RESOURCE_TYPES:
+                        continue
+                    # Determinar propietario real usando player_id individual
+                    unit_pid = getattr(unit, "player_id", -1)
+                    is_own = (unit_pid == own_pid) if unit_pid >= 0 else (pid_group == own_pid)
+                    if not is_own:
+                        continue
+                    if utype in WORKER_TYPES:
+                        workers.append(unit)
+                    elif utype in BUILDING_TYPES:
+                        buildings.append(unit)
+                    else:
+                        army.append(unit)
         except Exception:
             pass
 
@@ -193,21 +194,15 @@ class StateEncoder:
             ptr += BUILDING_FEATS
 
         # ── Enemigos visibles ─────────────────────────────────────────────────
-        # Handles both the normal case (enemies under a different pid) and the
-        # TorchCraft quirk where all units appear under player_id=0 (enemies
-        # identified by their unit type not belonging to any Terran category).
         enemies: list = []
         try:
-            pid_self = state.player_id
-            _own_types = WORKER_TYPES | ARMY_TYPES | BUILDING_TYPES
-            for pid, units in state.units.items():
-                for u in units.values():
+            for pid_group, pid_units in state.units.items():
+                for u in pid_units.values():
                     if u.type in RESOURCE_TYPES:
                         continue
-                    if pid != pid_self:
-                        enemies.append(u)
-                    elif u.type not in _own_types:
-                        # Non-Terran unit under own pid → treat as enemy
+                    unit_pid = getattr(u, "player_id", -1)
+                    is_own = (unit_pid == own_pid) if unit_pid >= 0 else (pid_group == own_pid)
+                    if not is_own:
                         enemies.append(u)
         except Exception:
             pass

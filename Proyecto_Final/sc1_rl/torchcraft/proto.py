@@ -276,7 +276,7 @@ class UnitState:
         "shield", "max_shield", "energy",
         "idle", "gathering_minerals", "gathering_gas",
         "attacking", "training", "constructing",
-        "resources",
+        "resources", "player_id",
     )
 
     def __init__(self):
@@ -296,6 +296,7 @@ class UnitState:
         self.training         = False
         self.constructing     = False
         self.resources        = 0
+        self.player_id        = -1  # individual unit owner (VT66)
 
 
 class ResourceState:
@@ -369,6 +370,7 @@ def _decode_unit(u_tab: _T.Table) -> UnitState:
     u.max_shield = _i32(u_tab, 16)
     u.energy     = _i32(u_tab, 18)
     u.type       = _i32(u_tab, 30)
+    u.player_id  = _i32(u_tab, 66)  # VT66: individual unit owner (playerId)
     u.resources  = _i32(u_tab, 68)  # resource amount (minerals on patch)
 
     flags = _i64(u_tab, 26)

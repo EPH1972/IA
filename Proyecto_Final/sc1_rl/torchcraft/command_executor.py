@@ -82,20 +82,25 @@ class CommandExecutor:
         """Envía las unidades del ejército propio en attack-move hacia la celda."""
         x, y = self._grid_to_pixels(action, state)
         commands = []
+        own_pid = state.player_id
         try:
-            pid_units = state.units.get(state.player_id, {})
-            for uid, unit in pid_units.items():
-                if uid <= 0:
-                    continue
-                # Solo comandamos unidades de ejército Terran propias,
-                # no workers, edificios, ni unidades enemigas/neutrales.
-                if unit.type in ARMY_TYPES:
+            for pid_group, pid_units in state.units.items():
+                for uid, unit in pid_units.items():
+                    if uid <= 0:
+                        continue
+                    # Filtrar por player_id individual (funciona en mirror matchups)
+                    unit_pid = getattr(unit, "player_id", -1)
+                    is_own = (unit_pid == own_pid) if unit_pid >= 0 else (pid_group == own_pid)
+                    if not is_own:
+                        continue
+                    # Solo unidades de combate (no edificios, workers, recursos)
+                    if unit.type in BUILDING_TYPES or unit.type in WORKER_TYPES or unit.type in RESOURCE_TYPES:
+                        continue
                     commands.append([CMD_ATTACK_MOVE, uid, -1, x, y, 0])
             if commands:
                 logger.debug(
-                    "ATTACK_MOVE → %d units → (%d,%d)  map_size=%s  uids=%s",
-                    len(commands), x, y, state.map_size,
-                    [c[1] for c in commands],
+                    "ATTACK_MOVE → %d units → (%d,%d)  uids=%s",
+                    len(commands), x, y, [c[1] for c in commands],
                 )
         except Exception as exc:
             logger.warning("build_commands error: %s", exc)

@@ -68,13 +68,12 @@ class TCRewardCalculator:
     def _classify(self, state):
         """Returns (army_units, enemy_units) as lists of UnitState.
 
-        Handles both cases:
-          - Correct: own units under state.player_id, enemies under a different pid.
-          - TorchCraft quirk: all visible units under state.player_id; enemies
-            identified by unit type not in Terran sets.
+        Uses individual unit.player_id (VT66) as primary classifier — works
+        even when BWEnv puts all units under the same group pid (TorchCraft quirk).
+        Falls back to type-based heuristic if player_id is not populated.
         """
         own_pid = state.player_id
-        army   = []
+        army    = []
         enemies = []
 
         try:
@@ -82,13 +81,19 @@ class TCRewardCalculator:
                 for u in units.values():
                     if u.type in RESOURCE_TYPES:
                         continue
-                    if pid == own_pid:
-                        # Could be own unit OR enemy under wrong pid
-                        if u.type in ARMY_TYPES or u.type in WORKER_TYPES or u.type in BUILDING_TYPES:
-                            if u.type in ARMY_TYPES:
+                    # Primary: use the unit's own player_id field
+                    unit_pid = getattr(u, "player_id", -1)
+                    if unit_pid >= 0:
+                        if unit_pid == own_pid:
+                            if u.type in ARMY_TYPES or u.type not in BUILDING_TYPES:
                                 army.append(u)
                         else:
-                            # Non-Terran unit under own pid → treat as enemy
+                            enemies.append(u)
+                    # Fallback: group pid + type-based heuristic
+                    elif pid == own_pid:
+                        if u.type in ARMY_TYPES:
+                            army.append(u)
+                        elif u.type not in WORKER_TYPES and u.type not in BUILDING_TYPES:
                             enemies.append(u)
                     else:
                         enemies.append(u)
