@@ -145,6 +145,7 @@ class StateEncoder:
             all_u = [
                 u for units in state.units.values() for u in units.values()
                 if u.type not in RESOURCE_TYPES and u.type not in BUILDING_TYPES
+                and u.health > 0
             ]
             if len(all_u) >= 2:
                 all_u.sort(key=lambda u: u.x + u.y)
@@ -157,6 +158,8 @@ class StateEncoder:
                 for unit in pid_units.values():
                     utype = unit.type
                     if utype in RESOURCE_TYPES:
+                        continue
+                    if unit.health <= 0:
                         continue
                     if self._own_unit_ids is None:
                         continue

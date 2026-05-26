@@ -81,6 +81,7 @@ class TCRewardCalculator:
         all_u = [
             u for units in state.units.values() for u in units.values()
             if u.type not in RESOURCE_TYPES and u.type not in BUILDING_TYPES
+            and u.health > 0
         ]
         if len(all_u) < 2:
             return
@@ -107,6 +108,8 @@ class TCRewardCalculator:
                     if u.type in RESOURCE_TYPES:
                         continue
                     if self._own_unit_ids is None:
+                        continue
+                    if u.health <= 0:
                         continue
                     if u.id in self._own_unit_ids:
                         army.append(u)

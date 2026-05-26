@@ -87,6 +87,7 @@ def main():
         tc_client=client,
         action_logger=action_logger,
         max_steps=train_cfg.get("max_episode_steps", 50_000),
+        frame_skip=train_cfg.get("frame_skip", 8),
     )
 
     # ── Agente PPO (MLP sobre vector estructurado) ────────────────────────────

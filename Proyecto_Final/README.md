@@ -38,7 +38,7 @@ El escenario de combate evolucionó durante el desarrollo: se comenzó con `m5v5
 
 *StarCraft: Brood War* es uno de los entornos de referencia más complejos para agentes artificiales. Su espacio de acciones masivo, la información imperfecta y la necesidad de micro-gestión táctica en tiempo real lo convierten en un banco de pruebas ideal para algoritmos de RL modernos. Este proyecto se centra en el problema de **micro-management de combate**: controlar un grupo de unidades Protoss para derrotar a un grupo enemigo equivalente en el menor número de frames posible.
 
-El escenario actual es el mapa `dragoons_zealots.scm` (8 unidades Protoss vs. 8 unidades Protoss, posiciones simétricas). Anteriormente se usó `m5v5_c_far.scm` (5 Marines Terran vs. 5 Zerglings), que sirvió para la fase inicial de integración del protocolo. El mapa de Protoss fue adoptado para estudiar comportamientos de micro-combate en un escenario de espejo simétrico, donde la identificación de equipos requiere inferencia posicional (ver Error 12).
+El escenario actual es el mapa `dragoons_zealots.scm` (5 unidades Protoss vs. 5 unidades Protoss (2 Dragoons + 3 Zealots), posiciones simétricas). Anteriormente se usó `m5v5_c_far.scm` (5 Marines Terran vs. 5 Zerglings), que sirvió para la fase inicial de integración del protocolo. El mapa de Protoss fue adoptado para estudiar comportamientos de micro-combate en un escenario de espejo simétrico, donde la identificación de equipos requiere inferencia posicional (ver Error 12).
 
 ### ¿Por qué TorchCraft y no píxeles?
 
@@ -244,7 +244,7 @@ Host Windows 10
 │                      └── ZMQ REP :11111          │
 │                                                  │
 │  Mapa: Maps/BroodWar/micro/dragoons_zealots.scm  │
-│  8 Protoss (jugador 0)  vs.  8 Protoss (IA)      │
+│  2 Dragoons + 3 Zealots (jugador 0)  vs.  2 Dragoons + 3 Zealots (IA)      │
 └──────────────────────────────────────────────────┘
 ```
 

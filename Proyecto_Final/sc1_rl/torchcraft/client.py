@@ -109,17 +109,35 @@ class TorchCraftClient:
             self._sock = None
         return False
 
+    def _close_socket(self) -> None:
+        """Close only the ZMQ socket (linger=0), leaving the context alive."""
+        if self._sock is not None:
+            try:
+                self._sock.close(linger=0)
+            except Exception:
+                pass
+            self._sock = None
+
     def reconnect(self) -> bool:
         """
-        Re-handshake sobre el socket existente después de EndGame.
+        Re-handshake después de EndGame creando un socket ZMQ fresco.
 
-        Con auto_restart=ON en bwapi.ini, BWEnv reinicia la partida
-        y espera un nuevo HandshakeClient en el mismo socket ZMQ REP.
-        Llamar a send([]) en ese estado causa un deadlock; hay que
-        volver a hacer el handshake completo.
+        Reutilizar el socket después de un error EFSM lo deja atascado.
+        Cerramos el socket viejo y abrimos uno nuevo antes de reenviar
+        el HandshakeClient, de forma que el ZMQ REQ state machine
+        arranca limpia.
         """
-        if self._sock is None:
-            return False
+        self._close_socket()
+
+        if self._ctx is None:
+            self._ctx = zmq.Context()
+
+        self._sock = self._ctx.socket(zmq.REQ)
+        self._sock.setsockopt(zmq.SNDTIMEO, 10_000)
+        self._sock.setsockopt(zmq.RCVTIMEO, int(self.connect_timeout * 1000))
+        self._sock.setsockopt(zmq.LINGER,   0)
+        self._sock.connect(f"tcp://{self.host}:{self.port}")
+
         try:
             self._sock.send(encode_handshake(self._uid))
             logger.info("Reconnect: HandshakeClient enviado (timeout=%.0f s)...",
@@ -140,6 +158,7 @@ class TorchCraftClient:
             logger.warning("Reconnect: msg_type inesperado=%d", msg_type)
         except zmq.ZMQError as exc:
             logger.error("Reconnect fallido: %s", exc)
+            self._close_socket()
         return False
 
     # ── Game-loop I/O ─────────────────────────────────────────────────────────
@@ -210,28 +229,7 @@ class TorchCraftClient:
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
     def close(self):
-        if self._sock is not None:
-            # Completar el intercambio REQ/REP pendiente antes de cerrar,
-            # para dejar BWEnv en estado limpio (esperando HandshakeClient).
-            # Así al relanzar main.py no es necesario reiniciar StarCraft.
-            try:
-                self._sock.setsockopt(zmq.SNDTIMEO, 2_000)
-                self._sock.setsockopt(zmq.RCVTIMEO, 2_000)
-                # Si hay una respuesta pendiente de recibir, la descartamos
-                self._sock.recv()
-            except Exception:
-                pass
-            try:
-                # Enviamos un NOOP final y esperamos la respuesta
-                self._sock.send(encode_commands(self._uid, []))
-                self._sock.recv()
-            except Exception:
-                pass
-            try:
-                self._sock.close()
-            except Exception:
-                pass
-            self._sock = None
+        self._close_socket()
         if self._ctx is not None:
             try:
                 self._ctx.term()

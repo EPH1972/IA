@@ -34,6 +34,26 @@ from sc1_rl.torchcraft.constants import (
 class CommandExecutor:
     """Traduce TCAction al formato de lista de comandos de TorchCraft."""
 
+    def __init__(self):
+        self._own_unit_ids: frozenset | None = None
+
+    def reset(self) -> None:
+        """Llamar al inicio de cada episodio para reiniciar el split de equipos."""
+        self._own_unit_ids = None
+
+    def _init_teams(self, state) -> None:
+        """Misma lógica de split posicional que TCRewardCalculator."""
+        all_u = [
+            u for units in state.units.values() for u in units.values()
+            if u.type not in RESOURCE_TYPES and u.type not in BUILDING_TYPES
+            and u.health > 0
+        ]
+        if len(all_u) < 2:
+            return
+        all_u.sort(key=lambda u: u.x + u.y)
+        mid = len(all_u) // 2
+        self._own_unit_ids = frozenset(u.id for u in all_u[:mid])
+
     def build_commands(self, action: TCAction, state) -> list:
         t = action.action_type
         if t == TCActionType.ATTACK_MOVE:
@@ -87,21 +107,19 @@ class CommandExecutor:
 
     def _attack_move(self, action: TCAction, state) -> list:
         """Envía las unidades del ejército propio en attack-move hacia la celda."""
+        if self._own_unit_ids is None:
+            self._init_teams(state)
+
         x, y = self._grid_to_pixels(action, state)
         commands = []
-        own_pid = state.player_id
         try:
-            for pid_group, pid_units in state.units.items():
+            for pid_units in state.units.values():
                 for uid, unit in pid_units.items():
-                    if uid <= 0:
+                    if self._own_unit_ids is not None and unit.id not in self._own_unit_ids:
                         continue
-                    # Filtrar por player_id individual (funciona en mirror matchups)
-                    unit_pid = getattr(unit, "player_id", -1)
-                    is_own = (unit_pid == own_pid) if unit_pid >= 0 else (pid_group == own_pid)
-                    if not is_own:
-                        continue
-                    # Solo unidades de combate (no edificios, workers, recursos)
                     if unit.type in BUILDING_TYPES or unit.type in WORKER_TYPES or unit.type in RESOURCE_TYPES:
+                        continue
+                    if unit.health <= 0:
                         continue
                     # TorchCraft format: [TC_CMD_UNIT_PROTECTED, uid, bwapi_cmd, target_uid, x, y, extra]
                     commands.append([TC_CMD_UNIT_PROTECTED, uid, CMD_ATTACK_MOVE, -1, x, y, 0])
