@@ -100,9 +100,22 @@ class StateEncoder:
             return
         self._debug_logged = True
         try:
+            # Mostrar qué valores tienen las constantes en tiempo de ejecución
+            _log.info(
+                "CONSTANTS ARMY_TYPES=%s WORKER_TYPES=%s",
+                sorted(ARMY_TYPES), sorted(WORKER_TYPES),
+            )
             for pid, units in state.units.items():
-                type_ids = sorted({u.type for u in units.values()})
-                _log.info("DEBUG unit types pid=%s → types=%s", pid, type_ids)
+                if not units:
+                    continue
+                from collections import Counter
+                counts = Counter(u.type for u in units.values())
+                # Posición del primer y último unit para ver si hay dos grupos
+                positions = [(u.type, u.x, u.y) for u in list(units.values())[:6]]
+                _log.info(
+                    "DEBUG pid=%s | type_counts=%s | first_units(type,x,y)=%s",
+                    pid, dict(counts), positions,
+                )
         except Exception as exc:
             _log.info("DEBUG unit types error: %s", exc)
 
