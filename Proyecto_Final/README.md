@@ -10,6 +10,8 @@
 
 Este trabajo presenta el diseño, implementación y puesta en marcha de un agente de aprendizaje por refuerzo (RL) capaz de jugar a *StarCraft: Brood War 1.16.1* en un escenario de micro-management de combate. El agente se ejecuta en un host Windows 10 y se comunica con el juego a través del protocolo TorchCraft ZMQ, que expone el estado estructurado del juego (posiciones, HP, tipos de unidad) mediante BWAPI 4.4.0 inyectado en el proceso de StarCraft dentro de una máquina virtual Windows 7. El algoritmo de aprendizaje es **Proximal Policy Optimization (PPO)** con una red MLP que consume un vector de observación de 189 características. El cliente TorchCraft es una reimplementación completa en Python puro con FlatBuffers manual, prescindiendo de la extensión C que ya no está disponible en PyPI.
 
+El escenario de combate evolucionó durante el desarrollo: se comenzó con `m5v5_c_far.scm` (5 Marines Terran vs. 5 Zerglings) y posteriormente se migró a `dragoons_zealots.scm` (8 Dragoons/Zealots Protoss vs. 8 Dragoons/Zealots Protoss), un escenario de espejo simétrico que presenta desafíos adicionales de identificación de equipos al reportar BWEnv todos los `player_id` como 0.
+
 ---
 
 ## Índice
@@ -18,24 +20,25 @@ Este trabajo presenta el diseño, implementación y puesta en marcha de un agent
 2. [Entorno de Ejecución](#2-entorno-de-ejecución)
 3. [Pila de Software dentro de la VM](#3-pila-de-software-dentro-de-la-vm)
 4. [Arquitectura del Sistema](#4-arquitectura-del-sistema)
-5. [Protocolo TorchCraft](#5-protocolo-torchcraft)
-6. [Espacio de Observación](#6-espacio-de-observación)
-7. [Espacio de Acciones](#7-espacio-de-acciones)
-8. [Algoritmo de Aprendizaje — PPO](#8-algoritmo-de-aprendizaje--ppo)
-9. [Recompensa](#9-recompensa)
-10. [Errores de Desarrollo y Soluciones](#10-errores-de-desarrollo-y-soluciones)
-11. [Uso Rápido](#11-uso-rápido)
-12. [Recursos Utilizados](#12-recursos-utilizados)
-13. [Trabajo Futuro](#13-trabajo-futuro)
-14. [Referencias](#14-referencias)
+5. [Cómo se Comunica el Modelo con BWAPI](#4b-cómo-se-comunica-el-modelo-con-bwapi)
+6. [Protocolo TorchCraft](#5-protocolo-torchcraft)
+7. [Espacio de Observación](#6-espacio-de-observación)
+8. [Espacio de Acciones](#7-espacio-de-acciones)
+9. [Algoritmo de Aprendizaje — PPO](#8-algoritmo-de-aprendizaje--ppo)
+10. [Recompensa](#9-recompensa)
+11. [Errores de Desarrollo y Soluciones](#10-errores-de-desarrollo-y-soluciones) (16 errores documentados)
+12. [Uso Rápido](#11-uso-rápido)
+13. [Recursos Utilizados](#12-recursos-utilizados)
+14. [Trabajo Futuro](#13-trabajo-futuro)
+15. [Referencias](#14-referencias)
 
 ---
 
 ## 1. Introducción
 
-*StarCraft: Brood War* es uno de los entornos de referencia más complejos para agentes artificiales. Su espacio de acciones masivo, la información imperfecta y la necesidad de micro-gestión táctica en tiempo real lo convierten en un banco de pruebas ideal para algoritmos de RL modernos. Este proyecto se centra en el problema de **micro-management de combate**: controlar un grupo de Marines Terran para derrotar a un grupo enemigo equivalente en el menor número de frames posible.
+*StarCraft: Brood War* es uno de los entornos de referencia más complejos para agentes artificiales. Su espacio de acciones masivo, la información imperfecta y la necesidad de micro-gestión táctica en tiempo real lo convierten en un banco de pruebas ideal para algoritmos de RL modernos. Este proyecto se centra en el problema de **micro-management de combate**: controlar un grupo de unidades Protoss para derrotar a un grupo enemigo equivalente en el menor número de frames posible.
 
-El escenario elegido es el mapa `m5v5_c_far.scm` (5 Marines vs. 5 Zerglings, posiciones alejadas), un benchmark estándar de la comunidad TorchCraft. El problema de micro-management ya es suficientemente rico para estudiar comportamientos emergentes como *focus fire*, *kiting* y posicionamiento táctico, sin la complejidad adicional de economía y construcción que introduce el juego completo.
+El escenario actual es el mapa `dragoons_zealots.scm` (8 unidades Protoss vs. 8 unidades Protoss, posiciones simétricas). Anteriormente se usó `m5v5_c_far.scm` (5 Marines Terran vs. 5 Zerglings), que sirvió para la fase inicial de integración del protocolo. El mapa de Protoss fue adoptado para estudiar comportamientos de micro-combate en un escenario de espejo simétrico, donde la identificación de equipos requiere inferencia posicional (ver Error 12).
 
 ### ¿Por qué TorchCraft y no píxeles?
 
@@ -139,10 +142,10 @@ ai_dbg = bwapi-data/AI/BWEnv.dll
 [auto_menu]
 auto_menu    = SINGLE_PLAYER
 auto_restart = ON
-map          = Maps/BroodWar/micro/m5v5_c_far.scm
-race         = Terran
+map          = Maps/BroodWar/micro/dragoons_zealots.scm
+race         = Protoss
 enemy_count  = 1
-enemy_race   = Zerg
+enemy_race   = Protoss
 game_type    = USE_MAP_SETTINGS
 
 [config]
@@ -240,10 +243,125 @@ Host Windows 10
 │                └── BWEnv.dll                     │
 │                      └── ZMQ REP :11111          │
 │                                                  │
-│  Mapa: Maps/BroodWar/micro/m5v5_c_far.scm        │
-│  5 Marines Terran  vs.  5 Zerglings Zerg         │
+│  Mapa: Maps/BroodWar/micro/dragoons_zealots.scm  │
+│  8 Protoss (jugador 0)  vs.  8 Protoss (IA)      │
 └──────────────────────────────────────────────────┘
 ```
+
+---
+
+## 4b. Cómo se Comunica el Modelo con BWAPI
+
+Esta sección describe el flujo completo de datos desde la red neuronal PPO hasta los comandos que mueven las unidades dentro de StarCraft, y viceversa.
+
+### Flujo de decisión (de red → juego)
+
+```
+ActorCriticMLP
+│  recibe obs[189]
+│  produce acción discreta ∈ {0..64}
+▼
+decode_tc_action(accion)          # action_space.py
+│  0        → TCAction(NOOP)
+│  1..64    → TCAction(ATTACK_MOVE, grid_row, grid_col)
+▼
+CommandExecutor.build_commands(action, state)   # command_executor.py
+│  Convierte grid (row,col) a píxeles (x,y):
+│    x = (col + 0.5) / 8 * map_w_px
+│    y = (row + 0.5) / 8 * map_h_px
+│  Filtra unidades del equipo propio (_own_unit_ids)
+│  Para cada unidad propia genera:
+│    [21, uid, 1, -1, x, y, 0]
+│     ↑    ↑   ↑   ↑  ↑  ↑  └─ extra (0)
+│     │    │   │   │  └──┘─── coordenadas en píxeles
+│     │    │   │   └──── target_uid (-1 = posición, no unidad)
+│     │    │   └──────── BWAPI UnitCommandType::Attack_Move = 1
+│     │    └──────────── ID de unidad BWAPI
+│     └───────────────── TC_CMD_UNIT_PROTECTED = 21
+▼
+TorchCraftClient.send(commands)   # client.py
+│  Serializa con FlatBuffers:
+│    Message { msg: Commands{[Command{code,args}]}, uid }
+│  Envía por ZMQ REQ → 192.168.0.23:11111
+▼
+BWEnv.dll (VM)
+│  Recibe Commands via ZMQ REP
+│  Por cada comando con code=21 (COMMAND_UNIT_PROTECTED):
+│    BWAPI::Broodwar->getUnit(uid)->attack(Position(x,y))
+│    (solo ejecuta si la unidad pertenece al jugador 0)
+▼
+StarCraft.exe
+   Mueve la unidad y auto-ataca enemigos en rango
+```
+
+### Flujo de observación (de juego → red)
+
+```
+StarCraft.exe
+│  Avanza un frame (≈42 ms a 24 FPS)
+▼
+BWAPI 4.4.0 (hook en proceso)
+│  Lee estado interno: posiciones, HP, flags, recursos
+▼
+BWEnv.dll
+│  Serializa Frame o FrameDiff en FlatBuffers StateUpdate
+│  Envía como respuesta ZMQ REP
+▼
+TorchCraftClient._process_state()  # client.py
+│  Decodifica FlatBuffers → GameState
+│  Si FrameDiff: aplica delta sobre prev_state.units
+│  Si EndGame:   state.game_ended = True
+▼
+SC1EnvTC.step() / reset()
+│  Limpia unidades stale (ver Error 16)
+▼
+StateEncoder.encode(state)         # state_encoder.py
+│  Extrae y normaliza:
+│    recursos[4] + workers[40] + army[60] + buildings[40]
+│    + enemies[40] + summary[5]  →  obs[189]
+│  Clasifica propios/enemigos por _own_unit_ids (split posicional)
+▼
+TCRewardCalculator.compute(state, action)  # reward.py
+│  Compara con frame anterior:
+│    kills = prev_enemy_count - enemy_count  → +0.50/baja
+│    deaths = prev_army_count - army_count   → −0.50/baja
+│    hp_lost = prev_enemy_hp - enemy_hp      → +0.001/HP
+│    dist_delta = prev_avg_dist - avg_dist   → ±0.0005/px
+│    survival                                → +0.001/frame
+│    victoria (enemy_count == 0)             → +10.0
+│    derrota  (army_count  == 0)             → −5.0
+▼
+ActorCriticMLP
+   recibe obs[189] → genera siguiente acción
+```
+
+### Identificación de equipos: split posicional
+
+Como BWEnv reporta `player_id=0` para **todas** las unidades (ver Error 12), el sistema no puede distinguir equipos por jugador. La solución implementada es un **split diagonal** basado en las posiciones iniciales:
+
+```python
+# En TCRewardCalculator, StateEncoder y CommandExecutor
+all_u.sort(key=lambda u: u.x + u.y)   # diagonal x+y
+mid = len(all_u) // 2
+_own_unit_ids   = frozenset(u.id for u in all_u[:mid])   # esquina inferior
+_enemy_unit_ids = frozenset(u.id for u in all_u[mid:])   # esquina superior
+```
+
+Las unidades con menor `x+y` (esquina superior-izquierda en StarCraft) pertenecen al equipo del agente (jugador 0). El set de IDs se fija en el primer frame del episodio y se mantiene durante todo el episodio: cuando una unidad muere simplemente desaparece de `state.units` y su ID deja de aparecer en `_classify()`.
+
+### Formato de comando TorchCraft vs BWAPI
+
+Un error crítico de desarrollo fue confundir los códigos de nivel TorchCraft con los tipos de comando BWAPI:
+
+| Capa | Campo | Valor | Significado |
+|---|---|---|---|
+| **TorchCraft** (game-level) | `Command.code` | 0 | noop — no ejecutar nada |
+| **TorchCraft** (game-level) | `Command.code` | 1 | **QUIT** — termina la partida |
+| **TorchCraft** (game-level) | `Command.code` | 21 | `COMMAND_UNIT_PROTECTED` — ejecutar comando BWAPI en unidad propia |
+| **BWAPI** (dentro de args) | `args[1]` | 1 | `UnitCommandType::Attack_Move` |
+| **BWAPI** (dentro de args) | `args[1]` | 15 | `UnitCommandType::Gather` |
+
+El formato correcto de un comando ATTACK_MOVE es `[21, uid, 1, -1, x, y, 0]`, donde `21` es el código TorchCraft que indica "ejecutar comando BWAPI" y `1` es el UnitCommandType de BWAPI dentro de los argumentos.
 
 ---
 
@@ -320,19 +438,21 @@ Las coordenadas se normalizan dividiendo entre el tamaño del mapa en píxeles (
 
 ## 7. Espacio de Acciones
 
-Espacio discreto con **196 acciones**:
+Espacio discreto con **65 acciones** (ajustado al escenario de micro-combate puro):
 
 | Rango | Tipo | Cantidad | Descripción |
 |---|---|---|---|
 | 0 | NOOP | 1 | Sin acción — avanza un frame sin comandos |
-| 1 | GATHER_IDLE_WORKERS | 1 | Asigna todos los SCVs ociosos al recurso más cercano |
-| 2–65 | ATTACK_MOVE | 64 | Ataque en grid 8×8 sobre el mapa completo |
-| 66–129 | BUILD_SUPPLY_DEPOT | 64 | Construir Supply Depot en grid 8×8 |
-| 130–193 | BUILD_BARRACKS | 64 | Construir Barracks en grid 8×8 |
-| 194 | TRAIN_SCV | 1 | Entrenar SCV desde el Command Center |
-| 195 | TRAIN_MARINE | 1 | Entrenar Marine desde cualquier Barracks |
+| 1–64 | ATTACK_MOVE | 64 | Ataque en grid 8×8 sobre el mapa completo |
 
-El grid 8×8 divide el mapa en 64 celdas. Para ATTACK_MOVE, el `CommandExecutor` envía a **todas** las unidades de combate hacia la celda seleccionada (posición en píxeles del centroide de la celda).
+El grid 8×8 divide el mapa en 64 celdas. La celda (row, col) se convierte a coordenadas en píxeles como el centroide de la celda:
+
+```python
+x = int((col + 0.5) / 8 * map_w_px)
+y = int((row + 0.5) / 8 * map_h_px)
+```
+
+Para ATTACK_MOVE, el `CommandExecutor` envía el comando únicamente a las **unidades del equipo propio** (identificadas por split posicional), generando un comando `[TC_CMD_UNIT_PROTECTED=21, uid, CMD_ATTACK_MOVE=1, -1, x, y, 0]` por unidad. Las acciones de economía (construir, entrenar, recolectar) fueron eliminadas al migrar al escenario de combate puro `dragoons_zealots.scm`, donde no hay recursos ni producción.
 
 ---
 
@@ -405,15 +525,19 @@ while timesteps < total_timesteps:
 
 | Señal | Valor | Descripción |
 |---|---|---|
-| HP infligido (× 0.01) | proporcional | Daño total causado al enemigo en el frame |
-| HP recibido (× −0.005) | proporcional | Daño recibido por las propias unidades |
-| Bajas enemigas (× 1.0) | +1.0 por baja | Unidad enemiga eliminada |
-| Bajas propias (× −1.0) | −1.0 por baja | Unidad propia eliminada |
+| Supervivencia | +0.001 / frame | Incentivo por mantenerse vivo |
+| Acción ATTACK_MOVE | +0.005 / frame | Incentivo por enviar comandos activos |
+| Penalización NOOP | −0.003 / frame | Desincentiva la inacción |
+| Daño infligido | +0.001 × HP_perdido | Daño total causado al enemigo en el frame |
+| Baja enemiga | +0.50 por baja | Unidad enemiga eliminada |
+| Baja propia | −0.50 por baja | Unidad propia eliminada |
+| Acercamiento al enemigo | +0.0005 × Δdist | Mejora en distancia media al enemigo más cercano |
 | Victoria | +10.0 | Todas las unidades enemigas eliminadas |
-| Derrota | −10.0 | Todas las unidades propias eliminadas |
-| Supervivencia | +0.001 / frame | Incentivo mínimo para no quedarse inmóvil |
+| Derrota | −5.0 | Todas las unidades propias eliminadas |
 
-La función de recompensa se orienta a combate puro: maximizar el daño infligido y las bajas enemigas mientras se minimizan las propias bajas. Esto es apropiado para el mapa `m5v5_c_far.scm` donde no hay economía ni construcción.
+La identificación de equipos para el cálculo de recompensa usa el mismo split posicional que el `StateEncoder` y el `CommandExecutor`. Los tres componentes inicializan `_own_unit_ids` de forma independiente pero con la misma lógica en el primer frame de cada episodio, y se resetean al inicio de cada episodio mediante `reward.reset()` y `executor.reset()`.
+
+En una política aleatoria (inicio del entrenamiento), la recompensa esperada por episodio de 2000 pasos es ≈12.0 = 2000 × (attack_reward + survival) = 2000 × 0.006, sin kills ni muertes porque las unidades se mueven aleatoriamente sin converger al enemigo. La función de recompensa empieza a diferenciarse cuando el agente aprende a dirigir las unidades hacia el enemigo.
 
 ---
 
@@ -603,6 +727,168 @@ state = self.tc.state
 
 ---
 
+### Error 11: Código de comando TorchCraft `code=1` = QUIT, no Attack_Move
+
+**Síntoma:** El handshake y el bucle de juego funcionan correctamente. Las unidades reciben comandos ATTACK_MOVE pero el juego termina exactamente después de 3 pasos, siempre, con el mensaje `TorchCraft: game ended (msg_type=6)` un milisegundo después del tercer envío de comandos.
+
+**Causa:** Confusión entre dos capas de codificación distintas. El formato de un comando TorchCraft es `[code, arg1, arg2, ...]` donde `code` es un enum de nivel **TorchCraft** (no BWAPI):
+
+| `code` TorchCraft | Significado |
+|---|---|
+| 0 | noop |
+| **1** | **QUIT — termina la partida inmediatamente** |
+| 21 | `COMMAND_UNIT_PROTECTED` — ejecutar `args[1]` como UnitCommandType de BWAPI |
+
+La implementación usaba `CMD_ATTACK_MOVE = 1` (que es el valor correcto como `UnitCommandType` de BWAPI) directamente como `code` del comando TorchCraft. Al recibir `code=1`, BWEnv.dll interpretaba QUIT y cerraba la partida. Esto es consistente con el comportamiento observado: exactamente 3 pasos, partida terminada a los 3 ms.
+
+**Diagnóstico:** El problema se dedujo por la consistencia de "exactamente 3 pasos" y el log `msg_type=6` (EndGame) recibido inmediatamente tras el tercer Commands. Se confirmó consultando el código fuente de `BWEnv.cpp` que lista los valores del enum de comandos TorchCraft.
+
+**Solución:** Añadir la constante `TC_CMD_UNIT_PROTECTED = 21` y cambiar el formato:
+
+```python
+# ANTES (incorrecto — envía QUIT):
+commands.append([CMD_ATTACK_MOVE, uid, -1, x, y, 0])
+#                      ↑ = 1 = QUIT en nivel TorchCraft
+
+# DESPUÉS (correcto):
+TC_CMD_UNIT_PROTECTED = 21  # TorchCraft game-level command
+commands.append([TC_CMD_UNIT_PROTECTED, uid, CMD_ATTACK_MOVE, -1, x, y, 0])
+#                       ↑ = 21 = ejecutar BWAPI cmd       ↑ = 1 = Attack_Move
+```
+
+---
+
+### Error 12: BWEnv reporta `player_id=0` para todas las unidades — split posicional
+
+**Síntoma:** El log de debug muestra `units_by_player_id={0: 16}` — todas las unidades de ambos equipos aparecen bajo el mismo `player_id=0`. Es imposible distinguir equipos por identificador de jugador.
+
+**Causa:** BWEnv.dll en su configuración de micro-scenarios reporta el campo `playerId` (VT66 de la VTable de `Unit` en el FlatBuffer) como 0 para todas las unidades, independientemente del jugador BWAPI real. Esto ocurre porque BWEnv en modo micro-scenario consolida el estado de ambos jugadores bajo el ID del cliente conectado (jugador 0).
+
+**Diagnóstico:** Se confirmó leyendo el campo VT66 directamente en `proto.py` y observando que siempre devuelve 0 para las 16 unidades del mapa `dragoons_zealots.scm`.
+
+**Solución:** Identificar equipos por **posición inicial en la diagonal** `x+y`. Al inicio de cada episodio, se ordenan todas las unidades por `x+y` y se divide por la mediana: la mitad inferior pertenece al equipo propio (esquina superior-izquierda del mapa), la mitad superior al equipo enemigo:
+
+```python
+all_u.sort(key=lambda u: u.x + u.y)
+mid = len(all_u) // 2
+_own_unit_ids   = frozenset(u.id for u in all_u[:mid])
+_enemy_unit_ids = frozenset(u.id for u in all_u[mid:])
+```
+
+Esta lógica se implementa de forma idéntica e independiente en `TCRewardCalculator`, `StateEncoder` y `CommandExecutor`, reseteándose al inicio de cada episodio.
+
+---
+
+### Error 13: Tipo de unidad BWAPI = 101, no 65 (Zealot) ni 66 (Dragoon)
+
+**Síntoma:** `ARMY_TYPES` incluye `UTYPE_DRAGOON=66` y `UTYPE_ZEALOT=65`, pero el log de debug muestra `type_counts={101: 16}` — todas las unidades tienen tipo 101. Ningún comando llegaba a ejecutarse porque ninguna unidad superaba el filtro por tipo.
+
+**Causa:** El tipo BWAPI reportado por TorchCraft para las unidades del mapa `dragoons_zealots.scm` no coincide con los valores de la enumeración `UnitType::Enum` de la documentación estándar de BWAPI 4.x. El tipo 101 no aparece documentado como un tipo estándar de Protoss. La causa exacta es desconocida (posible discrepancia entre versiones de TorchCraft/BWAPI).
+
+**Solución:** Eliminar el filtro por tipo en `CommandExecutor._attack_move()` y usar exclusivamente el split posicional por UID para determinar qué unidades son propias. Los filtros por tipo se mantienen únicamente para excluir edificios, workers y recursos (que tienen tipos conocidos y estables):
+
+```python
+# Solo excluir lo que definitivamente no es combate
+if unit.type in BUILDING_TYPES or unit.type in WORKER_TYPES or unit.type in RESOURCE_TYPES:
+    continue
+# Identificación de equipo: por UID, no por tipo
+if self._own_unit_ids and unit.id not in self._own_unit_ids:
+    continue
+```
+
+---
+
+### Error 14: Socket ZMQ REQ atascado en estado EFSM tras error de recv
+
+**Síntoma:** Después de que se produce un error en la comunicación ZMQ, todos los pasos siguientes fallan instantáneamente con `TorchCraft send/recv error: Operation cannot be accomplished in current state`. Los episodios duran exactamente 1 paso, con `reward=0` y el bucle de entrenamiento entra en un estado de fallo permanente a miles de episodios por segundo.
+
+**Causa:** El socket ZMQ REQ implementa una máquina de estados estricta: send → recv → send → recv. Si `recv()` falla (timeout o error de red), el socket queda en estado "awaiting reply" (EFSM = Error de Finite State Machine). En este estado, cualquier intento de `send()` también falla con EFSM. El método `reconnect()` original reutilizaba el mismo socket roto, por lo que tampoco podía enviar el HandshakeClient.
+
+```
+Socket REQ atascado:
+  send() → EFSM error
+  recv() → EFSM error
+  send() → EFSM error  (loop infinito)
+```
+
+Adicionalmente, como el socket nunca completaba el ciclo, `game_ended` nunca se ponía a `True`, por lo que `reset()` no llamaba a `reconnect()` y el loop continuaba indefinidamente.
+
+**Solución:** Modificar `reconnect()` para cerrar el socket roto y crear uno nuevo antes de intentar el handshake. Añadir detección de EFSM en `reset()` para forzar reconexión si `recv()` falla sin `game_ended`:
+
+```python
+def reconnect(self) -> bool:
+    self._close_socket()          # cierra socket roto (linger=0)
+    self._sock = self._ctx.socket(zmq.REQ)  # socket fresco
+    self._sock.connect(f"tcp://{self.host}:{self.port}")
+    # ... handshake normal ...
+
+# En reset():
+ok = self.tc.recv()
+if not ok and not needs_reconnect:
+    if self.tc.reconnect():       # fallback: reconectar si EFSM
+        ok = self.tc.recv()
+```
+
+---
+
+### Error 15: Episodios terminan antes de `game_ended` — estado no se limpia entre partidas
+
+**Síntoma:** A partir del segundo episodio, el split posicional devuelve 13v13 en lugar de 8v8. El log muestra `TEAMS own_ids=[0, 1, 2, 12, 14, 15, 26, 27, ...]` — unidades de la partida anterior mezcladas con las de la nueva.
+
+**Causa:** El entorno tiene dos condiciones de terminación:
+1. `game_ended = True` (BWEnv envió `EndGame`)
+2. `combat_over = True` (conteo de unidades llegó a 0)
+
+Cuando `combat_over` se dispara antes de que BWEnv envíe `EndGame`, el episodio termina con `game_ended=False`. Al llamar a `reset()`, la condición `if state.game_ended` no se cumple, por lo que **`reconnect()` no se llama** y el estado del cliente conserva las unidades de la partida anterior. BWEnv con `auto_restart` añade entonces las nuevas unidades encima de las antiguas en la siguiente respuesta, resultando en un estado contaminado.
+
+**Solución en dos partes:**
+
+1. **Dreno de frames** en `step()`: cuando `combat_over=True` pero `game_ended=False`, enviar hasta 60 NOOPs adicionales hasta recibir el `EndGame` oficial:
+```python
+if combat_over and not state.game_ended:
+    for _ in range(60):
+        if not self.tc.send([]) or self.tc.state.game_ended:
+            break
+    if not self.tc.state.game_ended:
+        self.tc.state.game_ended = True  # forzar si BWEnv no responde
+```
+
+2. **Limpieza de stale units** en `reset()`: guardar los IDs de las unidades actuales antes de reconectar, y eliminarlos del primer frame del nuevo juego. Fallback adicional: si el número de unidades supera el esperado (16 para 8v8), conservar solo las 16 con IDs más altos (las más recientes):
+```python
+stale_ids = {u.id for pid_u in state.units.values() for u in pid_u.values()}
+# ... reconectar ...
+# eliminar stale_ids del nuevo estado
+# fallback: conservar solo los expected_unit_count más recientes
+```
+
+---
+
+### Error 16: Executor comandaba unidades de ambos equipos
+
+**Síntoma:** El log `ATTACK_MOVE → 15 units → uids=[1,2,3,...,15]` muestra que el agente enviaba comandos a 15 de las 16 unidades — ambos equipos. Visualmente en el juego, unidades de ambos colores recibían órdenes.
+
+**Causa:** El `CommandExecutor` filtraba unidades por `player_id == own_pid`. Como todos los `player_id` son 0 (ver Error 12), `is_own=True` para todas las unidades, y todas recibían comandos. Solo se excluía `uid=0` por el filtro `if uid <= 0: continue`. Los comandos `TC_CMD_UNIT_PROTECTED=21` son ignorados por BWAPI para las unidades que no pertenecen al jugador 0 (comandar unidades enemigas), pero el *agente creía estar comandando a su propio equipo* y el split posicional de la recompensa clasificaba incorrectamente los equipos.
+
+**Solución:** Añadir la misma lógica de split posicional en `CommandExecutor`, con su propio `_own_unit_ids` reseteado al inicio de cada episodio mediante `executor.reset()`:
+
+```python
+class CommandExecutor:
+    def __init__(self):
+        self._own_unit_ids = None
+
+    def reset(self):
+        self._own_unit_ids = None
+
+    def _init_teams(self, state):
+        all_u = [u for units in state.units.values() for u in units.values()
+                 if u.type not in RESOURCE_TYPES and u.type not in BUILDING_TYPES]
+        all_u.sort(key=lambda u: u.x + u.y)
+        mid = len(all_u) // 2
+        self._own_unit_ids = frozenset(u.id for u in all_u[:mid])
+```
+
+---
+
 ## 11. Uso Rápido
 
 ### Requisitos previos
@@ -730,11 +1016,13 @@ Proyecto_Final/
 
 ## 13. Trabajo Futuro
 
-- **Reward shaping:** diseñar señales de recompensa intermedias basadas en distancia al enemigo, concentración de fuego (*focus fire*) y kiting para acelerar el aprendizaje en los primeros episodios.
-- **Self-play:** entrenar el agente contra versiones anteriores de sí mismo en lugar de contra la IA de StarCraft, eliminando el sesgo hacia un único estilo de juego enemigo.
-- **Escalado de escenario:** aumentar el tamaño del combate (10v10, 20v20) y diversificar las razas enemigas para generalización.
-- **Arquitecturas recurrentes:** añadir una capa LSTM entre el encoder y la política para manejar información parcialmente observable (unidades fuera de rango visual).
-- **Juego completo:** como extensión a largo plazo, ampliar el espacio de acciones y observación para cubrir economía, construcción y producción de unidades, acercándose al problema original de AlphaStar.
+- **Convergencia de combate:** la señal de recompensa por distancia al enemigo (`+0.0005 × Δdist`) necesita refinamiento; el agente actual obtiene recompensa ~12 por episodio (solo survival + attack) sin llegar a matar unidades enemigas con política aleatoria. Explorar reward shaping más agresivo (*focus fire*, kiting explícito).
+- **Sincronización de IDs de equipo:** los tres componentes (`StateEncoder`, `TCRewardCalculator`, `CommandExecutor`) mantienen su propio `_own_unit_ids` independiente. En el futuro convendría centralizar esta lógica en un objeto `TeamTracker` compartido para garantizar consistencia estricta.
+- **Identificación de equipo por comportamiento:** en lugar del split posicional (que puede fallar si ambos equipos empiezan en posiciones similares), detectar el equipo propio observando qué unidades responden a los comandos `TC_CMD_UNIT_PROTECTED` en los primeros frames.
+- **Self-play:** entrenar el agente contra versiones anteriores de sí mismo en lugar de contra la IA de StarCraft.
+- **Escalado de escenario:** aumentar el tamaño del combate (10v10, 20v20) y diversificar las razas.
+- **Arquitecturas recurrentes:** añadir LSTM para información parcialmente observable.
+- **Estabilidad de reconexión:** el protocolo de auto_restart de BWEnv no limpia correctamente las unidades entre partidas (Error 15 y 16); una solución más robusta sería reiniciar BWEnv completamente entre episodios en lugar de depender de `auto_restart=ON`.
 
 ---
 
